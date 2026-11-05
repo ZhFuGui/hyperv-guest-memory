@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <RepositoryRoot>$(MSBuildThisFileDirectory)</RepositoryRoot>
+    <HypervisorArchitecture Condition="'$(HypervisorArchitecture)'==''">Intel</HypervisorArchitecture>
+    <HypervisorArchitectureDefine Condition="'$(HypervisorArchitecture)'=='Intel'">ARCH_INTEL</HypervisorArchitectureDefine>
+    <HypervisorArchitectureDefine Condition="'$(HypervisorArchitecture)'=='AMD'">ARCH_AMD</HypervisorArchitectureDefine>
+    <OutDir>$(RepositoryRoot)build\$(HypervisorArchitecture)\$(Platform)\$(Configuration)\</OutDir>
+    <IntDir>$(RepositoryRoot)obj\$(HypervisorArchitecture)\$(Platform)\$(Configuration)\$(MSBuildProjectName)\</IntDir>
+  </PropertyGroup>
+</Project>

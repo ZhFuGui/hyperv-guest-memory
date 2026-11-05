@@ -1,9 +1,9 @@
 #pragma once
 
-// choose whichever arch you want by uncommenting the following 2 lines
-// only 1 arch at a time
-#define ARCH_INTEL
-//#define ARCH_AMD
+// Selected by the HypervisorArchitecture MSBuild property.
+#if defined(ARCH_INTEL) && defined(ARCH_AMD)
+	#error "Define only one of ARCH_INTEL or ARCH_AMD"
+#endif
 
 #if defined(ARCH_INTEL)
 	#include "intel.hpp"
