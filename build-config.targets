@@ -3,10 +3,10 @@
   <Target Name="ValidateHypervisorArchitecture" BeforeTargets="PrepareForBuild">
     <Error Condition="'$(HypervisorArchitecture)'!='Intel' And '$(HypervisorArchitecture)'!='AMD'"
            Text="HypervisorArchitecture must be Intel or AMD." />
-    <Error Condition="'$(Platform)'!='x64'" Text="hyperv-memory requires Platform=x64." />
+    <Error Condition="'$(Platform)'!='x64'" Text="hyperv-guest-memory requires Platform=x64." />
   </Target>
   <!-- The payload project copies the loader once; the solution's other projects share its output directory. -->
   <Target Name="CopyLoaderScript" AfterTargets="Build" Condition="'$(MSBuildProjectName)'=='hyperv-attachment'">
-    <Copy SourceFiles="$(RepositoryRoot)load-hyperv-memory.bat" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="$(RepositoryRoot)load-hyperv-guest-memory.bat" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" />
   </Target>
 </Project>

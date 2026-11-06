@@ -6,7 +6,7 @@ mountvol Z: /S
 set boot_directory=Z:\EFI\Microsoft\Boot\
 
 if exist "%boot_directory%bootmgfw.original.efi" (
-    echo hyperv-memory seems to be already scheduled
+    echo hyperv-guest-memory seems to be already scheduled
 ) else (
     attrib -s %boot_directory%bootmgfw.efi
     move %boot_directory%bootmgfw.efi %boot_directory%bootmgfw.original.efi
@@ -16,7 +16,7 @@ if exist "%boot_directory%bootmgfw.original.efi" (
 
     bcdedit /set hypervisorlaunchtype auto
 
-    echo hyperv-memory will load at next boot
+    echo hyperv-guest-memory will load at next boot
 )
 
 endlocal
