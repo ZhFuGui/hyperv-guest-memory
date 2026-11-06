@@ -1,0 +1,1 @@
+hello, hyperv-guest-memory!
