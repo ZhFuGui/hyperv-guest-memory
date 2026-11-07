@@ -2,6 +2,7 @@
 #include "../cr3/cr3.hpp"
 #include "../hook/info.hpp"
 #include "../hook/page_split.hpp"
+#include "../hook/trap.hpp"
 #include "../../arch/current.hpp"
 
 bool slat::violation::handle() noexcept
@@ -24,6 +25,9 @@ bool slat::violation::handle() noexcept
 		arch::flush_slat_cache();
 		return true;
 	}
+
+	if (slat::hook::trap_capture(page_gpa))
+		return true;
 
 	cstd::shared_lock guard(hook::mtx);
 

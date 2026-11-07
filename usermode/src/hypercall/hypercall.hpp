@@ -26,4 +26,9 @@ namespace hc
 
 	bool add_log() noexcept;
 	std::size_t flush_logs(logs::entry* out, std::uint16_t count) noexcept;
+
+	bool trap_exec(std::uintptr_t gpa) noexcept;
+	bool trap_clear_all() noexcept;
+	std::size_t capture_flush(void* out, std::uint16_t count) noexcept;
+	std::uint64_t capture_stats() noexcept;
 }

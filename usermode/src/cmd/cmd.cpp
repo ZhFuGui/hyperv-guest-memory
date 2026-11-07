@@ -4,14 +4,17 @@
 #include "../arch/arch.hpp"
 #include "../hook/hook.hpp"
 #include "../hypercall/hypercall.hpp"
+#include "../nt/alloc.hpp"
 #include "../script/script.hpp"
 #include "../sys/dump.hpp"
 #include "../sys/kernel.hpp"
 #include "../util/log.hpp"
 
 #include <CLI/CLI.hpp>
+#include <capture.hpp>
 
 #include <cstdint>
+#include <fstream>
 #include <iostream>
 #include <string>
 #include <vector>
@@ -442,9 +445,124 @@ namespace
 		LOG_INFO("alias value: 0x{:X}", GET_U64(gva, alias_name));
 	}
 
-	void process(const std::string& command)
+	std::uint64_t parse_num(const std::string& text)
 	{
-		if (command.empty()) return;
+		try
+		{
+			return std::stoull(text, nullptr, 0);
+		}
+		catch (...)
+		{
+			return 0;
+		}
+	}
+
+	CLI::App* init_trap(CLI::App& app)
+	{
+		SUB(trap, "arm a one-shot execute trap over [cr3, address, size)");
+		REQ(trap, cr3);
+		REQ(trap, address);
+		REQ(trap, size);
+		return trap;
+	}
+
+	void process_trap(const CLI::App* const trap)
+	{
+		const auto cr3 = parse_num(GET_STR(trap, cr3));
+		const auto address = parse_num(GET_STR(trap, address));
+		const auto size = parse_num(GET_STR(trap, size));
+
+		if (!cr3 || !size)
+		{
+			LOG_ERR("bad arguments");
+			return;
+		}
+
+		constexpr auto page_mask_64 = static_cast<std::uint64_t>(arch::page_size - 1);
+
+		std::size_t armed = 0;
+		std::size_t requested = 0;
+
+		for (std::uint64_t offset = 0; offset < size; offset += arch::page_size)
+		{
+			const auto page_va = (address + offset) & ~page_mask_64;
+			requested++;
+
+			const auto gpa = hc::translate_va(cr3, page_va);
+			if (!gpa)
+				continue;
+
+			if (hc::trap_exec(gpa & ~page_mask_64))
+				armed++;
+		}
+
+		LOG_INFO("trap: armed {}/{} page(s)", armed, requested);
+	}
+
+	CLI::App* init_capflush(CLI::App& app)
+	{
+		SUB(capflush, "flush captured pages into a file (appends)");
+		REQ(capflush, path);
+		REQ(capflush, count);
+		return capflush;
+	}
+
+	void process_capflush(const CLI::App* const capflush)
+	{
+		const auto path = GET_STR(capflush, path);
+		auto count = parse_num(GET_STR(capflush, count));
+
+		if (count == 0 || count > capture::capacity)
+			count = capture::capacity;
+
+		nt::alloc buffer(sizeof(capture::rec) * count);
+		if (!buffer || !buffer.lock())
+		{
+			LOG_ERR("buffer alloc/lock failed");
+			return;
+		}
+
+		const auto n = hc::capture_flush(buffer.get(), static_cast<std::uint16_t>(count));
+		LOG_INFO("flushed {} record(s)", n);
+
+		if (n == 0)
+			return;
+
+		std::ofstream out(path, std::ios::binary | std::ios::app);
+		if (!out)
+		{
+			LOG_ERR("open failed: {}", path);
+			return;
+		}
+
+		out.write(buffer.get<char>(), static_cast<std::streamsize>(n * sizeof(capture::rec)));
+	}
+
+	CLI::App* init_capstats(CLI::App& app)
+	{
+		SUB(capstats, "show capture ring statistics");
+		return capstats;
+	}
+
+	void process_capstats(const CLI::App* const /*capstats*/)
+	{
+		const auto stats = hc::capture_stats();
+		LOG_INFO("captured={} dropped={}", stats & 0xFFFFFFFFull, stats >> 32);
+	}
+
+	CLI::App* init_trapclear(CLI::App& app)
+	{
+		SUB(trapclear, "disarm every execute trap");
+		return trapclear;
+	}
+
+	void process_trapclear(const CLI::App* const /*trapclear*/)
+	{
+		LOG_INFO("remaining trap entries: {}", hc::trap_clear_all());
+	}
+
+	void process(const std::string& command)
+	{		if (command.empty()) return;
 
 		sys::kern::parse_modules();
 
@@ -470,6 +588,10 @@ namespace
 		const CLI::App* const lkm  = init_lkm(app);
 		const CLI::App* const kme  = init_kme(app);
 		const CLI::App* const dkm  = init_dkm(app);
+		const CLI::App* const trap = init_trap(app);
+		const CLI::App* const capflush = init_capflush(app);
+		const CLI::App* const capstats = init_capstats(app);
+		const CLI::App* const trapclear = init_trapclear(app);
 
 		try
 		{
@@ -491,6 +613,10 @@ namespace
 			PROCESS_COMMAND(lkm);
 			PROCESS_COMMAND(kme);
 			PROCESS_COMMAND(dkm);
+			PROCESS_COMMAND(trap);
+			PROCESS_COMMAND(capflush);
+			PROCESS_COMMAND(capstats);
+			PROCESS_COMMAND(trapclear);
 		}
 		catch (const CLI::ParseError& e)
 		{

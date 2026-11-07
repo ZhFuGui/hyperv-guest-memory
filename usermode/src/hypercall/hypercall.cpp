@@ -79,3 +79,23 @@ std::size_t hc::flush_logs(logs::entry* const out, const std::uint16_t count) no
 {
 	return send(type::flush_logs, reinterpret_cast<std::uintptr_t>(out), count);
 }
+
+bool hc::trap_exec(const std::uintptr_t gpa) noexcept
+{
+	return send(type::trap_exec, gpa);
+}
+
+bool hc::trap_clear_all() noexcept
+{
+	return send(type::trap_clear_all);
+}
+
+std::size_t hc::capture_flush(void* const out, const std::uint16_t count) noexcept
+{
+	return send(type::capture_flush, curr_cr3(), reinterpret_cast<std::uintptr_t>(out), count);
+}
+
+std::uint64_t hc::capture_stats() noexcept
+{
+	return send(type::capture_stats);
+}

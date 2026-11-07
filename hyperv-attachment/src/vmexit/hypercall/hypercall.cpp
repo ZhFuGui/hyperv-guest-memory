@@ -1,11 +1,13 @@
 #include "hypercall.hpp"
 #include "../../arch/current.hpp"
+#include "../../capture/capture.hpp"
 #include "../../logs/logs.hpp"
 #include "../../mem/alloc/page.hpp"
 #include "../../mem/guest.hpp"
 #include "../../mem/mem.hpp"
 #include "../../slat/cr3/cr3.hpp"
 #include "../../slat/hook/hook.hpp"
+#include "../../slat/hook/trap.hpp"
 #include <hypercall.hpp>
 
 bool hc::handle(guest_regs& regs)
@@ -117,6 +119,43 @@ bool hc::handle(guest_regs& regs)
 		const auto count = static_cast<std::uint16_t>(regs.r8);
 
 		regs.rax = logs::flush(arch::guest_cr3(), guest_va, count);
+
+		return true;
+	}
+
+	case type::trap_exec:
+	{
+		const phys_addr gpa = regs.rdx & ~page_mask;
+
+		regs.rax = slat::hook::trap_exec(gpa) ? 1 : 0;
+
+		return true;
+	}
+
+	case type::trap_clear_all:
+	{
+		slat::hook::trap_clear_all();
+
+		regs.rax = slat::hook::trap_count();
+
+		return true;
+	}
+
+	case type::capture_flush:
+	{
+		const ::cr3 dest_cr3{ .flags = regs.rdx };
+		const auto dest_va = static_cast<std::uintptr_t>(regs.r8);
+		const auto count = static_cast<std::uint16_t>(regs.r9);
+
+		regs.rax = capture::flush(dest_cr3, dest_va, count);
+
+		return true;
+	}
+
+	case type::capture_stats:
+	{
+		regs.rax = static_cast<std::uint64_t>(capture::count())
+		         | (capture::dropped() << 32);
 
 		return true;
 	}

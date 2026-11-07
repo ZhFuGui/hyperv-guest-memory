@@ -17,7 +17,13 @@ namespace hc
 		hide_page,
 		rem_heap_size,
 		add_log,
-		flush_logs
+		flush_logs,
+		trap_exec,
+		trap_write,
+		trap_pte,
+		capture_flush,
+		capture_stats,
+		trap_clear_all
 	};
 
 	union info
