@@ -1,15 +1,15 @@
 #pragma once
 #include <cstdint>
 #include <cstddef>
-#include <atomic.hpp>
+#include <atomic>
 
 struct boot_info;
 
 struct vcpu
 {
 	vcpu() = default;
-	vcpu(vcpu&& other) noexcept : flush_needed(other.flush_needed.load()) {}
-	vcpu& operator=(vcpu&& other) noexcept { flush_needed.store(other.flush_needed.load()); return *this; }
+	vcpu(vcpu&& other) noexcept : observed_epoch(other.observed_epoch.load()) {}
+	vcpu& operator=(vcpu&& other) noexcept { observed_epoch.store(other.observed_epoch.load()); return *this; }
 
 	static void init(const boot_info& bi);
 
@@ -40,5 +40,8 @@ struct vcpu
 		}
 	}
 
-	cstd::atomic<bool> flush_needed{};
+	std::atomic<std::uint64_t> observed_epoch{};
+	std::uint64_t retry_gpa = UINT64_MAX;
+	std::uint64_t retry_rip = 0;
+	std::uint64_t retry_root = 0;
 };

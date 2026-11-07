@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <hypercall.hpp>
 #include <log.hpp>
+#include <capture.hpp>
 
 namespace hc
 {
@@ -27,8 +28,10 @@ namespace hc
 	bool add_log() noexcept;
 	std::size_t flush_logs(logs::entry* out, std::uint16_t count) noexcept;
 
-	bool trap_exec(std::uintptr_t gpa) noexcept;
-	bool trap_clear_all() noexcept;
+	bool trap_exec(std::uintptr_t gpa, bool defer_sync = false) noexcept;
+	std::size_t trap_clear_all() noexcept;
+	std::uint64_t trap_sync() noexcept;
+	bool trap_stats(capture::trap_status* out) noexcept;
 	std::size_t capture_flush(void* out, std::uint16_t count) noexcept;
 	std::uint64_t capture_stats() noexcept;
 }

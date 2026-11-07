@@ -79,6 +79,19 @@ void* mem::page::alloc(const std::size_t n) noexcept
 	return ptr;
 }
 
+void* mem::page::try_alloc(const std::size_t n) noexcept
+{
+	if (n == 0) return nullptr;
+	cstd::unique_lock lock(mutex, cstd::try_to_lock);
+	if (!lock.owns_lock()) return nullptr;
+	const auto start = free_pages.find_first_run(n);
+	if (start == free_pages.size()) return nullptr;
+	mark_indexes_used(start, n);
+	auto* ptr = reinterpret_cast<void*>(arena_base + start * page_size);
+	cstd::crt::memset(ptr, 0, n * page_size);
+	return ptr;
+}
+
 void mem::page::free(void* const p, const std::size_t n) noexcept
 {
 	if (!p || n == 0)

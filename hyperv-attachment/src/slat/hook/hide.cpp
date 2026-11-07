@@ -1,10 +1,13 @@
 #include "hide.hpp"
 #include "info.hpp"
+#include "trap.hpp"
+#include "cache.hpp"
 #include "../cr3/cr3.hpp"
 #include "../cr3/split.hpp"
 #include "../../arch/current.hpp"
 #include "../../mem/alloc/page.hpp"
 #include "../../mem/map.hpp"
+#include "../../vcpu/vcpu.hpp"
 
 #include <boot_info.hpp>
 
@@ -50,9 +53,12 @@ void slat::hook::init_hide(const boot_info& bi) noexcept
 	heap_pages = bi.heap_range.size / page_size;
 }
 
-bool slat::hook::hide(const phys_addr gpa, const std::size_t page_count) noexcept
+bool slat::hook::hide(const phys_addr gpa, const std::size_t page_count, const bool notify) noexcept
 {
-	cstd::lock_guard guard(hook::mtx);
+	cstd::unique_lock guard(hook::mtx, cstd::try_to_lock);
+	if (!guard.owns_lock() || trap_blocks_hooks()) return false;
+	const auto owner = shadow_owner.load(std::memory_order_acquire);
+	if (owner != UINT64_MAX && owner != vcpu::curr_id()) return false;
 
 	const auto zero_hpa = ensure_zero_page_hpa();
 	if (!zero_hpa)
@@ -68,10 +74,12 @@ bool slat::hook::hide(const phys_addr gpa, const std::size_t page_count) noexcep
 	if (cr3::shadow.flags && !hide_in(cr3::shadow, gpa, page_count, zero_pfn))
 		return false;
 
+	cache::flush_all(notify);
 	return true;
 }
 
 bool slat::hook::hide_heap() noexcept
 {
-	return heap_pages && hide(heap_gpa, heap_pages);
+	// Early AP initialization must not broadcast NMIs to processors still starting.
+	return heap_pages && hide(heap_gpa, heap_pages, false);
 }

@@ -10,6 +10,19 @@ extern "C" void intel_invept_all(invept_type type, const invept_descriptor& desc
 
 struct intel
 {
+	static constexpr std::uint64_t slat_execute_mask = (1ull << 2) | (1ull << 10);
+	static constexpr std::uint64_t slat_ad_mask = (1ull << 8) | (1ull << 9);
+	static constexpr std::uint64_t slat_nx_bits = 0;
+	static std::uint64_t slat_active_execute_mask()
+	{
+		return (vmread(VMCS_CTRL_SECONDARY_PROCESSOR_BASED_VM_EXECUTION_CONTROLS) & (1ull << 22))
+			? slat_execute_mask : (1ull << 2);
+	}
+	static std::uint64_t slat_fault_execute_mask(const std::uint64_t qualification)
+	{
+		return (slat_active_execute_mask() & (1ull << 10)) && (qualification & (1ull << 9))
+			? (1ull << 10) : (1ull << 2);
+	}
 	using slat_pte       = ept_pte;
 	using slat_pde       = ept_pde;
 	using slat_pde_2mb   = ept_pde_2mb;
@@ -129,6 +142,8 @@ struct intel
 	}
 
 	static void init(const boot_info&) {}
+	// The patched VMX call's return value is unused by the resume loop.
+	static std::uint64_t handled_vmexit_result(std::uint64_t) { return 0; }
 
 	static std::uint64_t vmread(std::uint64_t field)
 	{
@@ -199,6 +214,7 @@ struct intel
 			.gpa = vmread(VMCS_GUEST_PHYSICAL_ADDRESS),
 			.access = access,
 			.caused_by_translation = static_cast<bool>(qual.caused_by_translation),
+			.qualification = qual.flags,
 		};
 	}
 

@@ -7,11 +7,27 @@
 namespace capture
 {
 	// Per-CPU rings: 64 records each. On a 16-vCPU machine that is 1024 records
-	// (~4.2 MB) of buffering, with no cross-CPU synchronisation at all.
+	// (~4.2 MB) of buffering. Each ring has one producer and one consumer.
 	inline constexpr std::size_t per_cpu_capacity = 64;
 	inline constexpr std::size_t max_cpus = 32;
 	inline constexpr std::size_t total_capacity = per_cpu_capacity * max_cpus;
 	inline constexpr std::size_t page_bytes = 4096;
+	inline constexpr std::size_t max_flush_records = 16;
+
+	struct trap_status
+	{
+		std::uint64_t registered;
+		std::uint64_t captured;
+		std::uint64_t lost;
+		std::uint64_t restore_failures;
+		std::uint64_t unhandled;
+		std::uint64_t last_gpa;
+		std::uint64_t last_rip;
+		std::uint64_t last_qualification;
+		std::uint64_t last_root;
+		std::uint64_t flush_epoch;
+		std::uint64_t pending_cpus;
+	};
 
 	enum class reason : std::uint32_t
 	{

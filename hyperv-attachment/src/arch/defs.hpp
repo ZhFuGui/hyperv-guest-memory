@@ -58,6 +58,7 @@ struct slat_violation
 	phys_addr gpa;
 	page_perm access;
 	bool caused_by_translation;
+	std::uint64_t qualification;
 };
 
 inline constexpr std::size_t page_shift = 12;

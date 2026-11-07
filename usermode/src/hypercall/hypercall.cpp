@@ -80,14 +80,21 @@ std::size_t hc::flush_logs(logs::entry* const out, const std::uint16_t count) no
 	return send(type::flush_logs, reinterpret_cast<std::uintptr_t>(out), count);
 }
 
-bool hc::trap_exec(const std::uintptr_t gpa) noexcept
+bool hc::trap_exec(const std::uintptr_t gpa, const bool defer_sync) noexcept
 {
-	return send(type::trap_exec, gpa);
+	return send(type::trap_exec, gpa, defer_sync ? 1 : 0);
 }
 
-bool hc::trap_clear_all() noexcept
+std::size_t hc::trap_clear_all() noexcept
 {
 	return send(type::trap_clear_all);
+}
+
+std::uint64_t hc::trap_sync() noexcept { return send(type::trap_sync); }
+
+bool hc::trap_stats(capture::trap_status* const out) noexcept
+{
+	return out && send(type::trap_stats, reinterpret_cast<std::uintptr_t>(out));
 }
 
 std::size_t hc::capture_flush(void* const out, const std::uint16_t count) noexcept

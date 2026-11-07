@@ -8,6 +8,7 @@
 #include "../../slat/cr3/cr3.hpp"
 #include "../../slat/hook/hook.hpp"
 #include "../../slat/hook/trap.hpp"
+#include "../../slat/hook/cache.hpp"
 #include <hypercall.hpp>
 
 bool hc::handle(guest_regs& regs)
@@ -127,16 +128,14 @@ bool hc::handle(guest_regs& regs)
 	{
 		const phys_addr gpa = regs.rdx & ~page_mask;
 
-		regs.rax = slat::hook::trap_exec(gpa) ? 1 : 0;
+		regs.rax = slat::hook::trap_exec(gpa, regs.r8 != 1) ? 1 : 0;
 
 		return true;
 	}
 
 	case type::trap_clear_all:
 	{
-		slat::hook::trap_clear_all();
-
-		regs.rax = slat::hook::trap_count();
+		regs.rax = slat::hook::trap_clear_all() ? slat::hook::trap_count() : UINT64_MAX;
 
 		return true;
 	}
@@ -145,7 +144,8 @@ bool hc::handle(guest_regs& regs)
 	{
 		const ::cr3 dest_cr3{ .flags = regs.rdx };
 		const auto dest_va = static_cast<std::uintptr_t>(regs.r8);
-		const auto count = static_cast<std::uint16_t>(regs.r9);
+		const auto count = static_cast<std::uint16_t>(regs.r9 < capture::max_flush_records
+			? regs.r9 : capture::max_flush_records);
 
 		regs.rax = capture::flush(dest_cr3, dest_va, count);
 
@@ -159,6 +159,15 @@ bool hc::handle(guest_regs& regs)
 
 		return true;
 	}
+	case type::trap_stats:
+	{
+		const auto status = slat::hook::trap_stats();
+		regs.rax = mem::guest::write_virt(arch::guest_cr3(), regs.rdx, &status, sizeof(status));
+		return true;
+	}
+	case type::trap_sync:
+		regs.rax = slat::cache::flush_all();
+		return true;
 	}
 
 	return false;

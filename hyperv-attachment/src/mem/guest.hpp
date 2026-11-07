@@ -73,7 +73,9 @@ namespace mem::guest
 			if (!gpa)
 				return false;
 
-			auto* const mapped = map_phys<std::uint8_t*>(gpa);
+			auto* const mapped = map_gpa<std::uint8_t*>(gpa);
+			if (!mapped)
+				return false;
 			const auto page_left = page_size - (va & page_mask);
 			const auto chunk = remaining < page_left ? remaining : page_left;
 

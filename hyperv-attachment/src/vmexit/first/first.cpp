@@ -7,7 +7,7 @@
 #include "../../slat/hook/hook.hpp"
 #include "../../intr/nmi.hpp"
 
-#include <atomic.hpp>
+#include <atomic>
 #include <boot_info.hpp>
 #include <crt.hpp>
 
@@ -28,26 +28,25 @@ void vmexit::first::init(const boot_info& bi)
 	boot_img = bi.boot_img;
 }
 
-void vmexit::first::handle()
+bool vmexit::first::handle()
 {
-	static cstd::atomic<bool> handled;
-
-	if (handled.load(cstd::memory_order::relaxed))
-		return;
-
-	if (handled.exchange(true))
-		return;
+	static std::atomic<unsigned> state{};
+	if (state.load(std::memory_order_acquire) == 2) return true;
+	unsigned expected = 0;
+	if (!state.compare_exchange_strong(expected, 1)) return false;
 
 	wipe_boot_img();
 	slat::init();
 	intr::nmi::init();
+	state.store(2, std::memory_order_release);
+	return true;
 }
 
 void vmexit::first::handle_non_bsp()
 {
-	static cstd::atomic<bool> handled;
+	static std::atomic<bool> handled{};
 
-	if (handled.load(cstd::memory_order::relaxed))
+	if (handled.load(std::memory_order_acquire))
 		return;
 
 	if (vcpu::is_bsp())
@@ -57,5 +56,5 @@ void vmexit::first::handle_non_bsp()
 		return;
 
 	// the shadow is taken by the first hook, which hides this for itself
-	slat::hook::hide_heap();
+	if (!slat::hook::hide_heap()) handled.store(false, std::memory_order_release);
 }

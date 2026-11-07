@@ -23,7 +23,9 @@ namespace hc
 		trap_pte,
 		capture_flush,
 		capture_stats,
-		trap_clear_all
+		trap_clear_all,
+		trap_stats,
+		trap_sync
 	};
 
 	union info

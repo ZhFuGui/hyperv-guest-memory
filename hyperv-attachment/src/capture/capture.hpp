@@ -11,5 +11,6 @@ namespace capture
 	std::size_t count() noexcept;
 	std::size_t captured_bytes() noexcept;
 	std::uint64_t dropped() noexcept;
-	void reset() noexcept;
+	bool reset() noexcept;
+	void note_drop() noexcept;
 }

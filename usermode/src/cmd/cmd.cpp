@@ -449,7 +449,10 @@ namespace
 	{
 		try
 		{
-			return std::stoull(text, nullptr, 0);
+			if (text.empty() || text.front() == '-') return 0;
+			std::size_t consumed = 0;
+			const auto value = std::stoull(text, &consumed, 0);
+			return consumed == text.size() ? value : 0;
 		}
 		catch (...)
 		{
@@ -472,7 +475,7 @@ namespace
 		const auto address = parse_num(GET_STR(trap, address));
 		const auto size = parse_num(GET_STR(trap, size));
 
-		if (!cr3 || !size)
+		if (!cr3 || !size || address > UINT64_MAX - (size - 1))
 		{
 			LOG_ERR("bad arguments");
 			return;
@@ -483,20 +486,20 @@ namespace
 		std::size_t armed = 0;
 		std::size_t requested = 0;
 
-		for (std::uint64_t offset = 0; offset < size; offset += arch::page_size)
+		const auto last_page = (address + size - 1) & ~page_mask_64;
+		for (auto page_va = address & ~page_mask_64; ; page_va += arch::page_size)
 		{
-			const auto page_va = (address + offset) & ~page_mask_64;
 			requested++;
 
 			const auto gpa = hc::translate_va(cr3, page_va);
-			if (!gpa)
-				continue;
-
-			if (hc::trap_exec(gpa & ~page_mask_64))
+			if (gpa && hc::trap_exec(gpa & ~page_mask_64, true))
 				armed++;
+			if ((requested % 64) == 0) hc::trap_sync();
+			if (page_va == last_page) break;
 		}
 
-		LOG_INFO("trap: armed {}/{} page(s)", armed, requested);
+		const auto epoch = hc::trap_sync();
+		LOG_INFO("trap: accepted {}/{} page(s), sync epoch={} (trapstats shows pending CPUs)", armed, requested, epoch);
 	}
 
 	CLI::App* init_capflush(CLI::App& app)
@@ -515,27 +518,33 @@ namespace
 		if (count == 0 || count > capture::total_capacity)
 			count = capture::total_capacity;
 
-		nt::alloc buffer(sizeof(capture::rec) * count);
-		if (!buffer || !buffer.lock())
-		{
-			LOG_ERR("buffer alloc/lock failed");
-			return;
-		}
-
-		const auto n = hc::capture_flush(buffer.get(), static_cast<std::uint16_t>(count));
-		LOG_INFO("flushed {} record(s)", n);
-
-		if (n == 0)
-			return;
-
 		std::ofstream out(path, std::ios::binary | std::ios::app);
 		if (!out)
 		{
 			LOG_ERR("open failed: {}", path);
 			return;
 		}
+		nt::alloc buffer(sizeof(capture::rec) * capture::max_flush_records);
+		if (!buffer || !buffer.lock())
+		{
+			LOG_ERR("buffer alloc/lock failed");
+			return;
+		}
 
-		out.write(buffer.get<char>(), static_cast<std::streamsize>(n * sizeof(capture::rec)));
+		std::size_t written = 0;
+		while (written < count)
+		{
+			const auto request = (count - written) < capture::max_flush_records
+				? count - written : capture::max_flush_records;
+			const auto n = hc::capture_flush(buffer.get(), static_cast<std::uint16_t>(request));
+			if (n == 0) break;
+			if (n > request) { LOG_ERR("invalid capture response: {}", n); return; }
+			out.write(buffer.get<char>(), static_cast<std::streamsize>(n * sizeof(capture::rec)));
+			out.flush();
+			if (!out) { LOG_ERR("write failed: {}, {} drained record(s) were not persisted", path, n); return; }
+			written += n;
+		}
+		LOG_INFO("flushed {} record(s)", written);
 	}
 
 	CLI::App* init_capstats(CLI::App& app)
@@ -558,11 +567,35 @@ namespace
 
 	void process_trapclear(const CLI::App* const /*trapclear*/)
 	{
-		LOG_INFO("remaining trap entries: {}", hc::trap_clear_all());
+		const auto remaining = hc::trap_clear_all();
+		if (remaining == UINT64_MAX) LOG_ERR("trap control busy; retry trapclear");
+		else LOG_INFO("remaining trap entries: {}", remaining);
+	}
+
+	CLI::App* init_trapstats(CLI::App& app)
+	{
+		SUB(trapstats, "show trap outcomes, last unhandled fault and pending TLB invalidations");
+		return trapstats;
+	}
+
+	void process_trapstats(const CLI::App*)
+	{
+		nt::alloc buffer(sizeof(capture::trap_status));
+		if (!buffer || !buffer.lock() || !hc::trap_stats(buffer.get<capture::trap_status>()))
+		{
+			LOG_ERR("trapstats unavailable");
+			return;
+		}
+		const auto& s = *buffer.get<capture::trap_status>();
+		LOG_INFO("registered={} captured={} lost={} restore_failures={} unhandled={}",
+			s.registered, s.captured, s.lost, s.restore_failures, s.unhandled);
+		LOG_INFO("sync_epoch={} pending_cpus={} last_gpa=0x{:X} last_rip=0x{:X} qualification=0x{:X} root=0x{:X}",
+			s.flush_epoch, s.pending_cpus, s.last_gpa, s.last_rip, s.last_qualification, s.last_root);
 	}
 
 	void process(const std::string& command)
-	{		if (command.empty()) return;
+	{
+		if (command.empty()) return;
 
 		sys::kern::parse_modules();
 
@@ -592,6 +625,7 @@ namespace
 		const CLI::App* const capflush = init_capflush(app);
 		const CLI::App* const capstats = init_capstats(app);
 		const CLI::App* const trapclear = init_trapclear(app);
+		const CLI::App* const trapstats = init_trapstats(app);
 
 		try
 		{
@@ -617,6 +651,7 @@ namespace
 			PROCESS_COMMAND(capflush);
 			PROCESS_COMMAND(capstats);
 			PROCESS_COMMAND(trapclear);
+			PROCESS_COMMAND(trapstats);
 		}
 		catch (const CLI::ParseError& e)
 		{

@@ -4,6 +4,11 @@
 
 struct amd
 {
+	static constexpr std::uint64_t slat_execute_mask = 1ull << 63;
+	static constexpr std::uint64_t slat_ad_mask = (1ull << 5) | (1ull << 6);
+	static constexpr std::uint64_t slat_nx_bits = 1ull << 63;
+	static constexpr std::uint64_t slat_active_execute_mask() { return slat_execute_mask; }
+	static constexpr std::uint64_t slat_fault_execute_mask(std::uint64_t) { return slat_execute_mask; }
 	using slat_pte       = pte_64;
 	using slat_pde       = pde_64;
 	using slat_pde_2mb   = pde_2mb_64;
@@ -118,6 +123,8 @@ struct amd
 	}
 
 	static void init(const boot_info& bi);
+	// The patched AMD call returns the current VP context to the VMRUN loop.
+	static std::uint64_t handled_vmexit_result(std::uint64_t a1) { return a1; }
 	static struct vmcb* vmcb();
 
 	static struct guest_regs guest_regs(std::uint64_t, std::uint64_t a2)
@@ -168,7 +175,9 @@ struct amd
 		return {
 			.gpa = vmcb()->control.second_exit_info,
 			.access = access,
-			.caused_by_translation = static_cast<bool>(info.present),
+			.caused_by_translation = info.present && !info.npte_reserved_set
+				&& info.final_gpa_translation && !info.gpt_translation,
+			.qualification = info.flags,
 		};
 	}
 

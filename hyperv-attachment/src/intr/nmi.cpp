@@ -24,5 +24,5 @@ void intr::nmi::process() noexcept
 
 void intr::nmi::send_all_but_self() noexcept
 {
-	apic_inst->send_nmi(apic::icr_destination_shorthand::all_but_self);
+	if (apic_inst) apic_inst->send_nmi(apic::icr_destination_shorthand::all_but_self);
 }

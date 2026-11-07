@@ -5,6 +5,7 @@
 #include <crt.hpp>
 
 #include <intrin.h>
+#include <new>
 
 // #pragma function only takes effect once the names are declared, and it keeps the
 // definitions below from being turned back into intrinsic calls to themselves.
@@ -55,16 +56,6 @@ void* operator new(const std::size_t size)
 void* operator new[](const std::size_t size)
 {
 	return cstd::crt::malloc(size);
-}
-
-void* operator new([[maybe_unused]] const std::size_t size, void* const buffer) noexcept
-{
-	return buffer;
-}
-
-void* operator new[]([[maybe_unused]] const std::size_t size, void* const buffer) noexcept
-{
-	return buffer;
 }
 
 void operator delete(void* const buffer) noexcept

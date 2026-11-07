@@ -11,7 +11,7 @@ namespace slat::hook
 	void init_hide(const boot_info& bi) noexcept;
 
 	// points a guest physical range at a zero page, in every root that exists
-	bool hide(phys_addr gpa, std::size_t page_count = 1) noexcept;
+	bool hide(phys_addr gpa, std::size_t page_count = 1, bool notify = true) noexcept;
 
 	bool hide_heap() noexcept;
 }

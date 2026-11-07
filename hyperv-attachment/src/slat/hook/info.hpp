@@ -2,6 +2,7 @@
 #include "../../arch/defs.hpp"
 #include <list.hpp>
 #include <mutex.hpp>
+#include <atomic>
 
 namespace slat::hook
 {
@@ -14,4 +15,5 @@ namespace slat::hook
 
 	inline cstd::single_linked_list<info> list;
 	inline cstd::shared_mutex mtx;
+	inline constinit std::atomic<std::uint64_t> shadow_owner{UINT64_MAX};
 }

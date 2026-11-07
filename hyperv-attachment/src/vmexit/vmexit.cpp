@@ -4,6 +4,7 @@
 #include "../vcpu/vcpu.hpp"
 #include "../arch/current.hpp"
 #include "../slat/violation/violation.hpp"
+#include "../slat/hook/cache.hpp"
 #include "../intr/nmi.hpp"
 #include <boot_info.hpp>
 #include <crt.hpp>
@@ -19,7 +20,9 @@ namespace
 		switch (arch::exit_reason())
 		{
 		case exit_reason::cpuid:
-			return hc::handle(regs);
+			if (!hc::handle(regs)) return false;
+			arch::advance_rip();
+			return true;
 		case exit_reason::slat_violation:
 			return slat::violation::handle();
 		case exit_reason::nmi:
@@ -41,15 +44,20 @@ void vmexit::init(const boot_info& bi)
 std::uint64_t vmexit::detour(const std::uint64_t a1, const std::uint64_t a2,
                               const std::uint64_t a3, const std::uint64_t a4)
 {
-	first::handle();
+	if (vcpu::curr_id() >= vcpu::count())
+		return orig_handler(a1, a2, a3, a4);
+	if (!first::handle()) return orig_handler(a1, a2, a3, a4);
 	first::handle_non_bsp();
 
 	guest_regs regs = arch::guest_regs(a1, a2);
-
-	const auto ret = orig_handler(a1, a2, a3, a4);
+	slat::cache::handle();
+	if (arch::exit_reason() != exit_reason::slat_violation)
+		vcpu::curr().retry_gpa = UINT64_MAX;
 
 	if (handle_vmexit(regs))
+	{
 		arch::set_guest_regs(a1, a2, regs);
-
-	return ret;
+		return arch::handled_vmexit_result(a1);
+	}
+	return orig_handler(a1, a2, a3, a4);
 }
