@@ -1,5 +1,6 @@
 #pragma once
 #include <atomic>
+#include <array>
 #include <cstdint>
 #include <cstddef>
 #include <functional>
@@ -28,6 +29,9 @@ namespace mock
 	extern thread_local ::slat_violation fault;
 	extern bool deliver_nmis, allocation_fails, missing_leaf, mbec;
 	extern std::atomic<unsigned> allocations, notifications, original_calls;
+#if !defined(MOCK_INTEL)
+	extern std::array<vmcb_control, 64> vmcb_controls;
+#endif
 	extern std::function<void()> on_flush, on_mode_query, on_init;
 	extern std::function<void(void*, const void*, std::size_t)> on_copy;
 	void* allocate_page();
@@ -41,6 +45,12 @@ namespace mock
 
 struct arch : real_arch
 {
+	static void vmexit_begin()
+	{
+#if !defined(MOCK_INTEL)
+		real_arch::vmexit_begin(mock::vmcb_controls[mock::cpu]);
+#endif
+	}
 	static std::uint64_t slat_active_execute_mask()
 	{
 		if (mock::on_mode_query) { auto cb = std::move(mock::on_mode_query); mock::on_mode_query = nullptr; cb(); }
@@ -70,7 +80,18 @@ struct arch : real_arch
 	static ::slat_violation slat_violation() { return mock::fault; }
 	static void flush_slat_cache()
 	{
+#if !defined(MOCK_INTEL)
+		real_arch::flush_slat_cache(mock::vmcb_controls[mock::cpu]);
+#endif
 		if (mock::on_flush) { auto cb = std::move(mock::on_flush); mock::on_flush = nullptr; cb(); }
+	}
+	static bool slat_flush_pending()
+	{
+#if defined(MOCK_INTEL)
+		return false;
+#else
+		return real_arch::slat_flush_pending(mock::vmcb_controls[mock::cpu]);
+#endif
 	}
 };
 

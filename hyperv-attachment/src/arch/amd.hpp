@@ -126,6 +126,13 @@ struct amd
 	// The patched AMD call returns the current VP context to the VMRUN loop.
 	static std::uint64_t handled_vmexit_result(std::uint64_t a1) { return a1; }
 	static struct vmcb* vmcb();
+	static void vmexit_begin(vmcb_control& control)
+	{
+		// VMRUN consumes TLB_CONTROL but does not clear it. Owned exits bypass
+		// Hyper-V's handler, so retire the command used by the previous entry.
+		control.tlb_control = tlb_control::do_not_flush;
+	}
+	static void vmexit_begin() { vmexit_begin(vmcb()->control); }
 
 	static struct guest_regs guest_regs(std::uint64_t, std::uint64_t a2)
 	{
@@ -158,10 +165,16 @@ struct amd
 		vmcb()->control.nested_cr3 = cr3;
 		vmcb()->control.clean.nested_paging = 0;
 	}
-	static void flush_slat_cache()
+	static void flush_slat_cache(vmcb_control& control)
 	{
-		vmcb()->control.tlb_control = tlb_control::flush_entire_tlb;
+		control.tlb_control = tlb_control::flush_entire_tlb;
 	}
+	static void flush_slat_cache() { flush_slat_cache(vmcb()->control); }
+	static bool slat_flush_pending(const vmcb_control& control)
+	{
+		return control.tlb_control != tlb_control::do_not_flush;
+	}
+	static bool slat_flush_pending() { return slat_flush_pending(vmcb()->control); }
 
 	static struct slat_violation slat_violation()
 	{

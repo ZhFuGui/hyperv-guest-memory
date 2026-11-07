@@ -96,6 +96,50 @@ namespace
 		std::cout << "PASS initialization publication and exit dispatch ABI\n";
 	}
 
+#if !defined(MOCK_INTEL)
+	void amd_tlb_control_lifecycle()
+	{
+		clean(); mock::bind(0);
+		auto& local = mock::vmcb_controls[0];
+		local.tlb_control = tlb_control::flush_entire_tlb;
+		mock::reason = exit_reason::cpuid; mock::regs.rcx = 1;
+		check(vmexit::detour(0x100, 0, 0, 0) == handled_result, "AMD one-shot setup dispatch");
+		check(local.tlb_control == tlb_control::do_not_flush, "consumed AMD TLB_CONTROL remained sticky");
+
+		mock::deliver_nmis = false;
+		auto& remote = mock::vmcb_controls[1];
+		const auto calls = mock::original_calls.load();
+		bool replayed = true;
+		constexpr unsigned replay_rounds = 4096;
+		for (unsigned round = 0; round < replay_rounds; ++round)
+		{
+			mock::bind(0);
+			slat::cache::flush_all(false);
+			mock::bind(1);
+			mock::reason = exit_reason::unknown;
+			replayed &= vmexit::detour(0x100, 0, 0, 0) == 0x107;
+			replayed &= remote.tlb_control == tlb_control::flush_entire_tlb;
+		}
+		check(replayed, "Hyper-V cleared a pending AMD invalidation before VMRUN");
+		check(mock::original_calls == calls + replay_rounds, "forwarded AMD exit skipped Hyper-V");
+		check(vcpu::curr().observed_epoch.load() == slat::cache::epoch(),
+			"replayed AMD invalidation was not acknowledged");
+
+		mock::reason = exit_reason::cpuid; mock::regs.rcx = 1;
+		check(vmexit::detour(0x100, 0, 0, 0) == handled_result, "AMD one-shot consume dispatch");
+		check(remote.tlb_control == tlb_control::do_not_flush,
+			"replayed AMD invalidation leaked into a second VMRUN");
+		mock::bind(0); mock::deliver_nmis = true;
+		for (std::size_t cpu = 0; cpu < mock::cpu_count; ++cpu)
+		{
+			mock::bind(cpu);
+			slat::cache::handle();
+		}
+		mock::bind(0);
+		std::cout << "PASS AMD TLB_CONTROL one-shot consumption and forwarded-exit replay\n";
+	}
+#endif
+
 	void queue_regressions()
 	{
 		clean(); mock::bind(1); check(push(1), "first push"); mock::bind(0);
@@ -448,7 +492,11 @@ int main()
 		mock::setup(); source_page = mock::allocate_page();
 		std::memset(source_page, 0xa5, page_size);
 		bytes.fill(0x37); mock::map_guest_buffer(buffer.data(), buffer.size() * sizeof(capture::rec));
-		initialization_and_dispatch(); queue_regressions(); queue_stress(); trap_regressions();
+		initialization_and_dispatch();
+#if !defined(MOCK_INTEL)
+		amd_tlb_control_lifecycle();
+#endif
+		queue_regressions(); queue_stress(); trap_regressions();
 		lifetime_and_collisions(); failure_and_dispatch(); synchronization_and_control();
 		paging_and_epoch_failures(); arm_clear_stress(); coherent_diagnostics();
 		std::cout << "ALL PASS, assertions=" << checks << '\n';

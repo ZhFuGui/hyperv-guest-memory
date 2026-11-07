@@ -13,6 +13,7 @@ concept arch_backend = requires(const boot_info& bi,
 	typename T::slat_pdpte pdpte, typename T::slat_pml4e pml4e,
 	typename T::slat_pde_2mb pde_2mb, typename T::slat_pdpte_1gb pdpte_1gb) {
 	{ T::init(bi)                                                         } -> cstd::same_as<void>;
+	{ T::vmexit_begin()                                                   } -> cstd::same_as<void>;
 	{ T::guest_regs(std::uint64_t{}, std::uint64_t{})                     } -> cstd::same_as<struct guest_regs>;
 	{ T::set_guest_regs(std::uint64_t{}, std::uint64_t{}, ::guest_regs{}) } -> cstd::same_as<void>;
 
@@ -56,6 +57,7 @@ concept arch_backend = requires(const boot_info& bi,
 	{ T::slat_cr3()               } -> cstd::same_as<::cr3>;
 	{ T::set_slat_cr3(::cr3{})    } -> cstd::same_as<void>;
 	{ T::flush_slat_cache()       } -> cstd::same_as<void>;
+	{ T::slat_flush_pending()     } -> cstd::same_as<bool>;
 
 	{ T::slat_violation()         } -> cstd::same_as<struct ::slat_violation>;
 };

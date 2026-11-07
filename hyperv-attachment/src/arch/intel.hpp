@@ -144,6 +144,7 @@ struct intel
 	static void init(const boot_info&) {}
 	// The patched VMX call's return value is unused by the resume loop.
 	static std::uint64_t handled_vmexit_result(std::uint64_t) { return 0; }
+	static void vmexit_begin() {}
 
 	static std::uint64_t vmread(std::uint64_t field)
 	{
@@ -198,6 +199,7 @@ struct intel
 	{
 		intel_invept_all(invept_type::invept_all_context, {});
 	}
+	static bool slat_flush_pending() { return false; }
 
 	static struct slat_violation slat_violation()
 	{

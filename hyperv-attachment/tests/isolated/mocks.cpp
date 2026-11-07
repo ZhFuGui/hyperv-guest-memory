@@ -19,6 +19,9 @@ namespace mock
 	thread_local ::slat_violation fault{};
 	bool deliver_nmis = true, allocation_fails = false, missing_leaf = false, mbec = false;
 	std::atomic<unsigned> allocations{}, notifications{}, original_calls{};
+#if !defined(MOCK_INTEL)
+	std::array<vmcb_control, 64> vmcb_controls{};
+#endif
 	std::function<void()> on_flush, on_mode_query, on_init;
 	std::function<void(void*, const void*, std::size_t)> on_copy;
 	::cr3 system_guest_root{};
@@ -95,6 +98,10 @@ namespace mock
 	std::uint64_t original_handler(std::uint64_t a1, std::uint64_t, std::uint64_t, std::uint64_t)
 	{
 		++original_calls;
+#if !defined(MOCK_INTEL)
+		// Match the booted hvax64 handler: it retires the previous VMRUN command.
+		real_arch::vmexit_begin(vmcb_controls[cpu]);
+#endif
 		return a1 + 7;
 	}
 }
