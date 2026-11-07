@@ -104,11 +104,31 @@ namespace
 		return true;
 	}
 
+	bool release_complete(const entry& item, const phys_addr page) noexcept
+	{
+		const ::cr3 root{.flags = item.root};
+		auto* const current_pte = slat::cr3::find_leaf(root, page);
+		if (current_pte != item.pte) return true;
+
+		const auto current_flags = std::atomic_ref<std::uint64_t>(current_pte->flags).load(std::memory_order_acquire);
+		const arch::slat_pte current{.flags = current_flags};
+		const arch::slat_pte original{.flags = item.original};
+		if (!arch::slat_is_present(current) || current.page_frame_number != original.page_frame_number)
+			return true;
+
+		return (current_flags & arch::slat_execute_mask) == (item.original & arch::slat_execute_mask);
+	}
+
 	bool retire(entry& item, const phys_addr page) noexcept
 	{
-		item.state.exchange(phase::retiring);
-		if (!restore(item, page, 0, false))
+		const auto previous = item.state.exchange(phase::retiring);
+		// captured/lost are published only after the fault path has restored X.
+		// If the guest later unmaps or replaces the page, there is no old mapping
+		// left to repair and granting execute to the replacement would be unsafe.
+		const bool already_released = previous == phase::captured || previous == phase::lost || previous == phase::retired;
+		if (!already_released && !set_execute(item, page, true) && !release_complete(item, page))
 		{
+			restore_failures.fetch_add(1, std::memory_order_relaxed);
 			item.state.store(phase::error);
 			return false;
 		}

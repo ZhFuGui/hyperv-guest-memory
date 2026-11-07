@@ -266,6 +266,23 @@ namespace
 	void lifetime_and_collisions()
 	{
 		clean(); constexpr phys_addr a = 0x3000, b = a + (8192ull << page_shift);
+		auto* pte = prepare(a);
+		check(slat::hook::trap_exec(a) && slat::hook::trap_capture(a), "captured unmap setup");
+		const auto failures = slat::hook::trap_stats().restore_failures;
+		flags(pte, 0);
+		check(slat::hook::trap_clear_all() && slat::hook::trap_count() == 0,
+			"captured unmapped page could not retire");
+		check(flags(pte) == 0 && slat::hook::trap_stats().restore_failures == failures,
+			"captured unmap was modified or counted as a restore failure");
+		clean(); pte = prepare(a);
+		check(slat::hook::trap_exec(a), "armed replacement setup");
+		const auto replacement = flags(pte) ^ (1ull << page_shift);
+		flags(pte, replacement);
+		check(slat::hook::trap_clear_all() && slat::hook::trap_count() == 0,
+			"replaced armed mapping stranded trap metadata");
+		check(flags(pte) == replacement && slat::hook::trap_stats().restore_failures == failures,
+			"replacement mapping was widened or counted as a restore failure");
+		clean();
 		prepare(a); prepare(b);
 		check(slat::hook::trap_exec(a) && slat::hook::trap_exec(b), "collision setup");
 		check(slat::hook::trap_remove(a) && slat::hook::trap_capture(b), "deletion broke hash probe chain");
