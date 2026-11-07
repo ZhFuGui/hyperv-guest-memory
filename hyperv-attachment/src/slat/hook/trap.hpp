@@ -14,6 +14,7 @@ namespace slat::hook
 	bool trap_exec(phys_addr gpa) noexcept;
 	bool trap_capture(phys_addr gpa) noexcept;
 	bool trap_remove(phys_addr gpa) noexcept;
+	void trap_release(phys_addr gpa) noexcept;
 	void trap_clear_all() noexcept;
 	std::size_t trap_count() noexcept;
 	std::size_t trap_captured() noexcept;

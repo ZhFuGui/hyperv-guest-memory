@@ -41,5 +41,10 @@ bool slat::violation::handle() noexcept
 		return true;
 	}
 
-	return false;
+	// Safety net: an execute violation that nobody claimed must still be
+	// handled, otherwise it falls through to Hyper-V and bugchecks with
+	// HYPERVISOR_ERROR (0x20001). Restore execute permission and resume.
+	slat::hook::trap_release(page_gpa);
+
+	return true;
 }

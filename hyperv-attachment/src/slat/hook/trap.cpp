@@ -82,6 +82,12 @@ bool slat::hook::trap_exec(const phys_addr gpa) noexcept
 	if (!pte)
 		return false;
 
+	// Permissions first: if a fault races ahead of the table insert, the
+	// violation handler's safety net cleans it up. The reverse order could
+	// leave a page read-only with nobody owning the resulting fault.
+	arch::slat_set_perm(*pte, page_perm::read);
+	arch::flush_slat_cache();
+
 	entry->gpa = page;
 	entry->hits = 0;
 	entry->captured = false;
@@ -89,9 +95,6 @@ bool slat::hook::trap_exec(const phys_addr gpa) noexcept
 	_ReadWriteBarrier();
 	entry->used = true;
 	used_count = used_count + 1;
-
-	arch::slat_set_perm(*pte, page_perm::read);
-	arch::flush_slat_cache();
 
 	return true;
 }
@@ -101,8 +104,17 @@ bool slat::hook::trap_capture(const phys_addr gpa) noexcept
 	const auto page = gpa & ~page_mask;
 
 	auto* const entry = find(page);
-	if (!entry || entry->captured)
+	if (!entry)
 		return false;
+
+	if (entry->captured)
+	{
+		// A concurrent scan re-armed a page that was already captured.
+		// Restore execute permission and swallow the exit: returning false
+		// leaves the violation unhandled and Hyper-V bugchecks 0x20001.
+		restore_permissions(page);
+		return true;
+	}
 
 	entry->captured = true;
 	entry->hits = entry->hits + 1;
@@ -143,6 +155,11 @@ bool slat::hook::trap_remove(const phys_addr gpa) noexcept
 	restore_permissions(page);
 
 	return true;
+}
+
+void slat::hook::trap_release(const phys_addr gpa) noexcept
+{
+	restore_permissions(gpa & ~page_mask);
 }
 
 void slat::hook::trap_clear_all() noexcept
