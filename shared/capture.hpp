@@ -6,7 +6,11 @@
 // Layout must stay POD and identical on both sides.
 namespace capture
 {
-	inline constexpr std::size_t capacity = 128;
+	// Per-CPU rings: 64 records each. On a 16-vCPU machine that is 1024 records
+	// (~4.2 MB) of buffering, with no cross-CPU synchronisation at all.
+	inline constexpr std::size_t per_cpu_capacity = 64;
+	inline constexpr std::size_t max_cpus = 32;
+	inline constexpr std::size_t total_capacity = per_cpu_capacity * max_cpus;
 	inline constexpr std::size_t page_bytes = 4096;
 
 	enum class reason : std::uint32_t

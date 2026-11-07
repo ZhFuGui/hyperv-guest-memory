@@ -512,8 +512,8 @@ namespace
 		const auto path = GET_STR(capflush, path);
 		auto count = parse_num(GET_STR(capflush, count));
 
-		if (count == 0 || count > capture::capacity)
-			count = capture::capacity;
+		if (count == 0 || count > capture::total_capacity)
+			count = capture::total_capacity;
 
 		nt::alloc buffer(sizeof(capture::rec) * count);
 		if (!buffer || !buffer.lock())

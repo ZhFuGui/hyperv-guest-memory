@@ -6,24 +6,28 @@
 #include "../../mem/mem.hpp"
 
 #include <crt.hpp>
-#include <mutex.hpp>
+#include <intrin.h>
 
+// Lock-free by design: this code runs inside VM-exit handlers, where a spinlock
+// held by a vCPU that the outer hypervisor preempts would stall every other
+// vCPU (observed as DPC_WATCHDOG_VIOLATION / bugcheck 0x133).
 namespace
 {
 	constexpr std::size_t table_size = 8192;
 	constexpr std::size_t table_mask = table_size - 1;
 
 	slat::hook::trap_entry table[table_size];
-	std::size_t used_count = 0;
-	std::size_t captured_count = 0;
-	cstd::mutex mtx;
+
+	// statistics are advisory; races only make the counters approximate
+	volatile std::uint32_t used_count = 0;
+	volatile std::uint32_t captured_count = 0;
 
 	std::size_t slot_of(const phys_addr gpa) noexcept
 	{
 		return static_cast<std::size_t>((gpa >> page_shift) & table_mask);
 	}
 
-	slat::hook::trap_entry* find_locked(const phys_addr gpa) noexcept
+	slat::hook::trap_entry* find(const phys_addr gpa) noexcept
 	{
 		for (std::size_t probe = 0; probe < table_size; probe++)
 		{
@@ -39,7 +43,7 @@ namespace
 		return nullptr;
 	}
 
-	slat::hook::trap_entry* find_empty_locked(const phys_addr gpa) noexcept
+	slat::hook::trap_entry* find_empty(const phys_addr gpa) noexcept
 	{
 		for (std::size_t probe = 0; probe < table_size; probe++)
 		{
@@ -67,34 +71,24 @@ bool slat::hook::trap_exec(const phys_addr gpa) noexcept
 {
 	const auto page = gpa & ~page_mask;
 
-	{
-		cstd::lock_guard guard{ mtx };
+	if (find(page))
+		return true;
 
-		if (find_locked(page))
-			return true;
-
-		auto* const entry = find_empty_locked(page);
-		if (!entry)
-			return false;
-
-		entry->gpa = page;
-		entry->hits = 0;
-		entry->captured = false;
-		entry->used = true;
-		used_count++;
-	}
+	auto* const entry = find_empty(page);
+	if (!entry)
+		return false;
 
 	auto* const pte = cr3::find_split_leaf(cr3::hyperv, page);
 	if (!pte)
-	{
-		cstd::lock_guard guard{ mtx };
-		if (auto* const entry = find_locked(page))
-		{
-			entry->used = false;
-			used_count--;
-		}
 		return false;
-	}
+
+	entry->gpa = page;
+	entry->hits = 0;
+	entry->captured = false;
+
+	_ReadWriteBarrier();
+	entry->used = true;
+	used_count = used_count + 1;
 
 	arch::slat_set_perm(*pte, page_perm::read);
 	arch::flush_slat_cache();
@@ -106,17 +100,13 @@ bool slat::hook::trap_capture(const phys_addr gpa) noexcept
 {
 	const auto page = gpa & ~page_mask;
 
-	{
-		cstd::lock_guard guard{ mtx };
+	auto* const entry = find(page);
+	if (!entry || entry->captured)
+		return false;
 
-		auto* const entry = find_locked(page);
-		if (!entry || entry->captured)
-			return false;
-
-		entry->captured = true;
-		entry->hits++;
-		captured_count++;
-	}
+	entry->captured = true;
+	entry->hits = entry->hits + 1;
+	captured_count = captured_count + 1;
 
 	restore_permissions(page);
 
@@ -140,18 +130,15 @@ bool slat::hook::trap_remove(const phys_addr gpa) noexcept
 {
 	const auto page = gpa & ~page_mask;
 
-	{
-		cstd::lock_guard guard{ mtx };
+	auto* const entry = find(page);
+	if (!entry)
+		return false;
 
-		auto* const entry = find_locked(page);
-		if (!entry)
-			return false;
+	if (entry->captured)
+		captured_count = captured_count - 1;
 
-		entry->used = false;
-		used_count--;
-		if (entry->captured)
-			captured_count--;
-	}
+	entry->used = false;
+	used_count = used_count - 1;
 
 	restore_permissions(page);
 
@@ -160,16 +147,12 @@ bool slat::hook::trap_remove(const phys_addr gpa) noexcept
 
 void slat::hook::trap_clear_all() noexcept
 {
-	cstd::lock_guard guard{ mtx };
-
 	for (std::size_t i = 0; i < table_size; i++)
 	{
 		if (!table[i].used)
 			continue;
 
-		auto* const pte = cr3::find_split_leaf(cr3::hyperv, table[i].gpa);
-		if (pte)
-			arch::slat_set_perm(*pte, page_perm::rwx);
+		restore_permissions(table[i].gpa);
 
 		table[i].used = false;
 		table[i].captured = false;
@@ -183,12 +166,10 @@ void slat::hook::trap_clear_all() noexcept
 
 std::size_t slat::hook::trap_count() noexcept
 {
-	cstd::lock_guard guard{ mtx };
 	return used_count;
 }
 
 std::size_t slat::hook::trap_captured() noexcept
 {
-	cstd::lock_guard guard{ mtx };
 	return captured_count;
 }
