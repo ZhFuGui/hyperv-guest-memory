@@ -69,6 +69,7 @@
     <ClCompile Include="src\mem\mem.cpp" />
     <ClCompile Include="src\vcpu\vcpu.cpp" />
     <ClCompile Include="src\vmexit\hypercall\hypercall.cpp" />
+    <ClCompile Include="src\vmexit\hypercall\batch.cpp" />
     <ClCompile Include="src\vmexit\first\first.cpp" />
     <ClCompile Include="src\vmexit\vmexit.cpp" />
     <ClCompile Include="src\slat\cr3\cr3.cpp" />
@@ -101,6 +102,7 @@
     <ClInclude Include="src\mem\mem.hpp" />
     <ClInclude Include="src\vcpu\vcpu.hpp" />
     <ClInclude Include="src\vmexit\hypercall\hypercall.hpp" />
+    <ClInclude Include="src\vmexit\hypercall\batch.hpp" />
     <ClInclude Include="src\vmexit\first\first.hpp" />
     <ClInclude Include="src\vmexit\vmexit.hpp" />
     <ClInclude Include="src\slat\slat.hpp" />

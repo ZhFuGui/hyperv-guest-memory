@@ -4,12 +4,14 @@
 #include <atomic.hpp>
 
 struct boot_info;
+namespace hc::batch { struct workspace; }
 
 struct vcpu
 {
 	vcpu() = default;
-	vcpu(vcpu&& other) noexcept : flush_needed(other.flush_needed.load()) {}
-	vcpu& operator=(vcpu&& other) noexcept { flush_needed.store(other.flush_needed.load()); return *this; }
+	vcpu(vcpu&& other) noexcept;
+	vcpu& operator=(vcpu&& other) noexcept;
+	~vcpu();
 
 	static void init(const boot_info& bi);
 
@@ -41,4 +43,5 @@ struct vcpu
 	}
 
 	cstd::atomic<bool> flush_needed{};
+	hc::batch::workspace* batch_work = nullptr;
 };

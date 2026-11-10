@@ -45,6 +45,21 @@ bool hc::virt_copy(const std::uint64_t src_cr3, const std::uintptr_t src_va,
 	return send(type::virt_mem_op, src_cr3, src_va, dest_cr3, dest_va, size);
 }
 
+bool hc::read_virtual_batch(const std::uint64_t source_cr3, const batch_read_item* const items,
+                            const std::uint32_t count, std::uint64_t& success_mask) noexcept
+{
+	success_mask = 0;
+	if (!items || !count || count > batch_max_items)
+		return false;
+	if (send(type::virt_read_batch, source_cr3, reinterpret_cast<std::uintptr_t>(items), count,
+	         reinterpret_cast<std::uintptr_t>(&success_mask)) != 1)
+	{
+		success_mask = 0;
+		return false;
+	}
+	return true;
+}
+
 std::uintptr_t hc::translate_va(const std::uint64_t cr3, const std::uintptr_t va) noexcept
 {
 	return send(type::translate_va, cr3, va);

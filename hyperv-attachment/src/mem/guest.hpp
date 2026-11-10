@@ -60,7 +60,7 @@ namespace mem::guest
 	enum class direction { from_guest, to_guest };
 
 	template <direction Dir>
-	inline bool copy_host(const cr3 guest_cr3, const std::uintptr_t guest_va,
+	inline bool copy_host(const cr3 guest_cr3, const cr3 slat_cr3, const std::uintptr_t guest_va,
 	                      void* const host_buf, const std::size_t size) noexcept
 	{
 		auto remaining = size;
@@ -69,11 +69,13 @@ namespace mem::guest
 
 		while (remaining > 0)
 		{
-			const auto gpa = translate_va(guest_cr3, va);
+			const auto gpa = translate_va(guest_cr3, slat_cr3, va);
 			if (!gpa)
 				return false;
 
-			auto* const mapped = map_phys<std::uint8_t*>(gpa);
+			auto* const mapped = map_gpa<std::uint8_t*>(slat_cr3, gpa);
+			if (!mapped)
+				return false;
 			const auto page_left = page_size - (va & page_mask);
 			const auto chunk = remaining < page_left ? remaining : page_left;
 
@@ -88,6 +90,26 @@ namespace mem::guest
 		}
 
 		return true;
+	}
+
+	template <direction Dir>
+	inline bool copy_host(const cr3 guest_cr3, const std::uintptr_t guest_va,
+	                      void* const host_buf, const std::size_t size) noexcept
+	{
+		return copy_host<Dir>(guest_cr3, arch::slat_cr3(), guest_va, host_buf, size);
+	}
+
+	inline bool read_virt(const cr3 guest_cr3, const cr3 slat_cr3, const std::uintptr_t guest_va,
+	                     void* const host_dest, const std::size_t size) noexcept
+	{
+		return copy_host<direction::from_guest>(guest_cr3, slat_cr3, guest_va, host_dest, size);
+	}
+
+	inline bool write_virt(const cr3 guest_cr3, const cr3 slat_cr3, const std::uintptr_t guest_va,
+	                      const void* const host_src, const std::size_t size) noexcept
+	{
+		return copy_host<direction::to_guest>(guest_cr3, slat_cr3, guest_va,
+		                                      const_cast<void*>(host_src), size);
 	}
 
 	inline bool read_virt(const cr3 guest_cr3, const std::uintptr_t guest_va,

@@ -2,6 +2,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <hypercall.hpp>
+#include <batch.hpp>
 #include <log.hpp>
 
 namespace hc
@@ -15,6 +16,11 @@ namespace hc
 	bool virt_copy(std::uint64_t src_cr3, std::uintptr_t src_va,
 	               std::uint64_t dest_cr3, std::uintptr_t dest_va,
 	               std::uint64_t size) noexcept;
+
+	// true publishes a valid mask, including an all-zero mask. Only set bits
+	// authorize use of the corresponding output; false clears success_mask.
+	bool read_virtual_batch(std::uint64_t source_cr3, const batch_read_item* items,
+	                        std::uint32_t count, std::uint64_t& success_mask) noexcept;
 
 	std::uintptr_t translate_va(std::uint64_t cr3, std::uintptr_t va) noexcept;
 

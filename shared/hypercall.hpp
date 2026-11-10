@@ -7,17 +7,20 @@ namespace hc
 
 	enum class type : std::uint64_t
 	{
-		test,
-		curr_cr3,
-		phys_mem_op,
-		virt_mem_op,
-		translate_va,
-		hook_add,
-		hook_remove,
-		hide_page,
-		rem_heap_size,
-		add_log,
-		flush_logs
+		test = 0,
+		curr_cr3 = 1,
+		phys_mem_op = 2,
+		virt_mem_op = 3,
+		translate_va = 4,
+		hook_add = 5,
+		hook_remove = 6,
+		hide_page = 7,
+		rem_heap_size = 8,
+		add_log = 9,
+		flush_logs = 10,
+		// RDX=source CR3, R8=items VA, R9=count, R10=mask VA, R11=0.
+		// RAX=1 iff all items were attempted and the mask was written.
+		virt_read_batch = 11
 	};
 
 	union info

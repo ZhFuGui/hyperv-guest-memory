@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations"><ProjectConfiguration Include="Release|x64"><Configuration>Release</Configuration><Platform>x64</Platform></ProjectConfiguration></ItemGroup>
+  <PropertyGroup Label="Globals"><Keyword>Win32Proj</Keyword><WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion></PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <Import Project="..\..\..\build-config.props" />
+  <PropertyGroup Label="Configuration"><ConfigurationType>Application</ConfigurationType><PlatformToolset>v145</PlatformToolset><UseDebugLibraries>false</UseDebugLibraries></PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <PropertyGroup>
+    <OutDir>$(RepositoryRoot)build\isolated-tests\batch\$(HypervisorArchitecture)\</OutDir>
+    <IntDir>$(OutDir)obj\</IntDir><TargetName>batch-tests</TargetName>
+  </PropertyGroup>
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <LanguageStandard>stdcpp20</LanguageStandard><Optimization>MaxSpeed</Optimization><ExceptionHandling>Sync</ExceptionHandling>
+      <WarningLevel>Level4</WarningLevel><TreatWarningAsError>true</TreatWarningAsError>
+      <DisableSpecificWarnings>4201;%(DisableSpecificWarnings)</DisableSpecificWarnings>
+      <AdditionalIncludeDirectories>$(ProjectDir);$(RepositoryRoot)shared;$(RepositoryRoot)vendor\cstd\src;$(RepositoryRoot)vendor\ia32-doc\out</AdditionalIncludeDirectories>
+      <ForcedIncludeFiles>$(ProjectDir)force.hpp</ForcedIncludeFiles>
+      <PreprocessorDefinitions>$(HypervisorArchitectureDefine);NOMINMAX;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+    <Link><SubSystem>Console</SubSystem></Link>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClCompile Include="main.cpp" />
+    <ClCompile Include="$(RepositoryRoot)hyperv-attachment\src\vmexit\hypercall\batch.cpp" />
+    <ClCompile Include="$(RepositoryRoot)hyperv-attachment\src\vmexit\hypercall\hypercall.cpp"><ObjectFileName>$(IntDir)dispatch.obj</ObjectFileName></ClCompile>
+    <ClCompile Include="$(RepositoryRoot)hyperv-attachment\src\vcpu\vcpu.cpp" />
+    <ClCompile Include="$(RepositoryRoot)hyperv-attachment\src\mem\mem.cpp" />
+    <ClCompile Include="$(RepositoryRoot)usermode\src\hypercall\hypercall.cpp"><ObjectFileName>$(IntDir)sdk.obj</ObjectFileName></ClCompile>
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <Target Name="StubModel" AfterTargets="Build">
+    <Exec Command="&quot;$(VCToolsInstallDir)bin\Hostx64\x64\ml64.exe&quot; /nologo /c /Fo &quot;$(IntDir)hc_stub.obj&quot; &quot;$(RepositoryRoot)usermode\src\hypercall\hc_stub.asm&quot;" />
+    <Exec Command="&quot;$(VCToolsInstallDir)bin\Hostx64\x64\link.exe&quot; /nologo /dll /noentry /nodefaultlib /export:send_hypercall /out:&quot;$(OutDir)stub-model.dll&quot; &quot;$(IntDir)hc_stub.obj&quot;" />
+  </Target>
+  <Import Project="..\..\..\build-config.targets" />
+</Project>
