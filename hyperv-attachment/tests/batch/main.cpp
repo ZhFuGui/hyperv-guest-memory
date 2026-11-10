@@ -304,6 +304,81 @@ namespace test
 		}
 	}
 
+	void review_guards()
+	{
+		fixture f;
+		auto* src = map(f.source, source_va); auto* dst = map(caller, output_va);
+		src[0] = 0x5B; dst[0] = 0xCC;
+		f.items[0] = {source_va, output_va, 1};
+		cpu = static_cast<unsigned long>(vcpu::count());
+		check(!f.run(1) && dst[0] == 0xCC, "CPU index at count rejected before access");
+		cpu = 0xFFFFFFFFUL;
+		check(!f.run(1), "huge CPU index rejected"); cpu = 0;
+		const auto caller_saved = caller, slat_saved = slat;
+		caller.flags = 0; check(!f.run(1), "zero caller root rejected"); caller = caller_saved;
+		slat.flags = 0; check(!f.run(1), "zero SLAT root rejected"); slat = slat_saved;
+		check(!vcpu::curr().batch_work->busy.load(), "zero-root failure releases workspace");
+
+		const auto source_root_hpa = gpa_hpa.at(f.source.flags);
+		slat_map(f.source.flags, hva_identity_map_size);
+		check(f.run(1) && *f.mask == 0 && dst[0] == 0xCC, "source table beyond identity coverage");
+		slat_map(f.source.flags, source_root_hpa);
+		const auto caller_root_hpa = gpa_hpa.at(caller.flags);
+		slat_map(caller.flags, hva_identity_map_size);
+		check(!f.run(1), "caller table beyond identity coverage");
+		slat_map(caller.flags, caller_root_hpa);
+
+		const auto source_gpa = *guest_leaf(f.source, source_va) & ~4095ULL;
+		slat_map(source_gpa, hva_identity_map_size);
+		check(f.run(1) && *f.mask == 0, "source leaf beyond identity coverage");
+		slat_map(source_gpa, gpa_hpa.at(source_gpa));
+		const auto output_gpa = *guest_leaf(caller, output_va) & ~4095ULL;
+		slat_map(output_gpa, hva_identity_map_size);
+		check(f.run(1) && *f.mask == 0, "destination leaf beyond identity coverage");
+		slat_map(output_gpa, gpa_hpa.at(output_gpa));
+		const auto mask_gpa = *guest_leaf(caller, mask_va) & ~4095ULL;
+		slat_map(mask_gpa, hva_identity_map_size);
+		check(!f.run(1), "publication beyond identity coverage");
+		slat_map(mask_gpa, gpa_hpa.at(mask_gpa));
+
+		auto& slat_pml4e = table(slat.flags)[0]; const auto saved = slat_pml4e;
+		slat_pml4e = hva_identity_map_size | 7;
+		check(!f.run(1), "SLAT child table beyond identity coverage"); slat_pml4e = saved;
+		check(f.run(1) && *f.mask == 1 && dst[0] == 0x5B, "valid call recovers after every rejected walk");
+		check(!mem::copy_phys(hva_identity_map_size - 1, 4096, 2), "physical source crossing coverage");
+		check(!mem::copy_phys(4096, hva_identity_map_size - 1, 2), "physical destination crossing coverage");
+		check(!mem::copy_phys(UINT64_MAX, 4096, 1), "physical address wrap rejected");
+		check(mem::copy_phys(UINT64_MAX, UINT64_MAX, 0), "empty physical copy remains no-op");
+	}
+
+	void page_walk_shapes()
+	{
+		reset();
+		const cr3 root{.flags = alloc_hpa()};
+		const auto pdpt = alloc_hpa(), pd = alloc_hpa(), pt = alloc_hpa(), data = alloc_hpa();
+		const auto va = source_va + 0x1234;
+		auto& pml4e = table(root.flags)[(va >> 39) & 511]; pml4e = pdpt | 7;
+		auto& pdpte = table(pdpt)[(va >> 30) & 511]; pdpte = 0x40000000ULL | 0x87;
+		check(mem::translate_va(root, va) == 0x40001234ULL, "one-GiB leaf snapshot");
+		pdpte = pd | 7;
+		auto& pde = table(pd)[(va >> 21) & 511]; pde = 0x400000ULL | 0x87;
+		check(mem::translate_va(root, va) == 0x401234ULL, "two-MiB leaf snapshot");
+		pde = pt | 7;
+		auto& pte = table(pt)[(va >> 12) & 511]; pte = data | 7;
+		check(mem::translate_va(root, va) == data + 0x234, "four-KiB leaf snapshot");
+		for (auto* entry : {&pml4e, &pdpte, &pde, &pte}) {
+			const auto saved = *entry; *entry &= ~1ULL;
+			check(mem::translate_va(root, va) == 0, "absent entry at each level"); *entry = saved;
+		}
+		for (auto* entry : {&pml4e, &pdpte, &pde}) {
+			const auto saved = *entry; *entry = hva_identity_map_size | 7;
+			check(mem::translate_va(root, va) == 0, "out-of-coverage table at each level"); *entry = saved;
+		}
+		pte = hva_identity_map_size | 7;
+		check(!mem::guest::map_gpa(root, va), "out-of-coverage final HPA rejected");
+		check(mem::translate_va(cr3{.flags = hva_identity_map_size}, va) == 0, "out-of-coverage root rejected");
+	}
+
 	std::uint64_t sdk_result = 1, sdk_mask = 0;
 	unsigned sdk_calls = 0;
 	hc::params sdk_params{};
@@ -361,7 +436,8 @@ int main()
 		boot_info bi{}; bi.cpu_count = 8; vcpu::init(bi);
 		test::check(vcpu::count() == 8 && vcpu::curr().batch_work, "production vCPU workspace init");
 		test::ordinary_and_limits(); test::validation_and_failure(); test::split_controls_and_host_copy();
-		test::dispatch_and_snapshot(); test::parallel_and_random(); test::sdk();
+		test::dispatch_and_snapshot(); test::parallel_and_random(); test::review_guards();
+		test::page_walk_shapes(); test::sdk();
 		// Reallocation moves ownership rather than losing or duplicating scratch.
 		auto* saved = vcpu::get(0).batch_work;
 		bi.cpu_count = 16; vcpu::init(bi);

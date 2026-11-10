@@ -8,6 +8,8 @@ namespace mem
 	template <class T = void*>
 	[[nodiscard]] T map_phys(const std::uintptr_t addr) noexcept
 	{
+		if (addr >= hva_identity_map_size)
+			return T{};
 		return reinterpret_cast<T>(hva_identity_map_base() + addr);
 	}
 

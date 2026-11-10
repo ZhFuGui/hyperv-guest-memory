@@ -7,6 +7,15 @@
 
 namespace mem
 {
+	template <typename Entry>
+	Entry read_entry(const Entry* table, std::size_t index) noexcept
+	{
+		// One aligned 64-bit snapshot: a concurrent PTE update must not mix
+		// the presence/large-page test with a later load of a different PFN.
+		static_assert(sizeof(Entry) == sizeof(std::uint64_t));
+		return Entry{.flags = reinterpret_cast<const volatile Entry*>(table)[index].flags};
+	}
+
 	template <typename MapFn>
 	phys_addr translate_va(const cr3 cr3, const std::uintptr_t va_raw, MapFn map_pa) noexcept
 	{
@@ -16,7 +25,7 @@ namespace mem
 			map_pa(cr3.address_of_page_directory << page_shift));
 		if (!pml4)
 			return 0;
-		const auto& pml4e = pml4[va.pml4e];
+		const auto pml4e = read_entry(pml4, va.pml4e);
 		if (!pml4e.present)
 			return 0;
 
@@ -24,7 +33,7 @@ namespace mem
 			map_pa(pml4e.page_frame_number << page_shift));
 		if (!pdpt)
 			return 0;
-		const auto& pdpte = pdpt[va.pdpte];
+		const auto pdpte = read_entry(pdpt, va.pdpte);
 		if (!pdpte.present)
 			return 0;
 
@@ -39,7 +48,7 @@ namespace mem
 			map_pa(pdpte.page_frame_number << page_shift));
 		if (!pd)
 			return 0;
-		const auto& pde = pd[va.pde];
+		const auto pde = read_entry(pd, va.pde);
 		if (!pde.present)
 			return 0;
 
@@ -53,7 +62,7 @@ namespace mem
 			map_pa(pde.page_frame_number << page_shift));
 		if (!ptbl)
 			return 0;
-		const auto& pte = ptbl[va.pte];
+		const auto pte = read_entry(ptbl, va.pte);
 		if (!pte.present)
 			return 0;
 

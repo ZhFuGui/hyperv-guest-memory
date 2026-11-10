@@ -41,12 +41,17 @@ bool hc::batch::read(const std::uint64_t source_cr3, const std::uintptr_t items_
 	    (mask_va & 7) || overlaps(items_va, items_bytes, mask_va, sizeof(std::uint64_t)))
 		return false;
 
-	auto* const work = vcpu::curr().batch_work;
+	const auto cpu_id = vcpu::curr_id();
+	if (cpu_id >= vcpu::count())
+		return false;
+	auto* const work = vcpu::get(cpu_id).batch_work;
 	if (!work || work->busy.exchange(true, cstd::memory_order::acquire))
 		return false;
 	const release_workspace release{*work};
 	const auto caller = arch::guest_cr3();
 	const auto slat = arch::slat_cr3();
+	if (!caller.address_of_page_directory || !slat.address_of_page_directory)
+		return false;
 	if (!mem::guest::read_virt(caller, slat, items_va, work->items, items_bytes))
 		return false;
 

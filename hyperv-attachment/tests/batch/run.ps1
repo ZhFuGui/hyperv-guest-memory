@@ -5,6 +5,11 @@ param([ValidateSet('Intel','AMD')][string[]]$Architecture = @('Intel','AMD'),
 $ErrorActionPreference = 'Stop'
 $projectRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..\..')).Path
 foreach ($cpuArchitecture in $Architecture) {
+    & MSBuild.exe (Join-Path $PSScriptRoot 'map-bounds.vcxproj') /m:3 /t:Build /p:Configuration=Release /p:Platform=x64 "/p:HypervisorArchitecture=$cpuArchitecture" /nr:false /verbosity:minimal
+    if ($LASTEXITCODE -ne 0) { throw "$cpuArchitecture real mapper build failed" }
+    $outputRoot = Join-Path $projectRoot "build\isolated-tests\batch\$cpuArchitecture"
+    & (Join-Path $outputRoot 'map-bounds.exe') | Tee-Object -FilePath (Join-Path $outputRoot 'map-results.txt')
+    if ($LASTEXITCODE -ne 0) { throw "$cpuArchitecture real mapper bounds failed" }
     & MSBuild.exe (Join-Path $PSScriptRoot 'batch-tests.vcxproj') /m:3 /t:Build /p:Configuration=Release /p:Platform=x64 "/p:HypervisorArchitecture=$cpuArchitecture" /nr:false /verbosity:minimal
     if ($LASTEXITCODE -ne 0) { throw "$cpuArchitecture test build failed" }
     $outputRoot = Join-Path $projectRoot "build\isolated-tests\batch\$cpuArchitecture"
