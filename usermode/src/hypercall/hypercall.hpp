@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <hypercall.hpp>
 #include <batch.hpp>
+#include <list_find.hpp>
 #include <log.hpp>
 
 namespace hc
@@ -21,6 +22,9 @@ namespace hc
 	// authorize use of the corresponding output; false clears success_mask.
 	bool read_virtual_batch(std::uint64_t source_cr3, const batch_read_item* items,
 	                        std::uint32_t count, std::uint64_t& success_mask) noexcept;
+	// true validates transport only; inspect result.status (including more).
+	bool find_virtual_list(std::uint64_t source_cr3, const list_find_request& request,
+	                       list_find_result& result) noexcept;
 
 	std::uintptr_t translate_va(std::uint64_t cr3, std::uintptr_t va) noexcept;
 

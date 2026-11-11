@@ -60,6 +60,19 @@ bool hc::read_virtual_batch(const std::uint64_t source_cr3, const batch_read_ite
 	return true;
 }
 
+bool hc::find_virtual_list(const std::uint64_t source_cr3, const list_find_request& request,
+                           list_find_result& result) noexcept
+{
+	result = {};
+	if (send(type::virt_find_list, source_cr3, reinterpret_cast<std::uintptr_t>(&request),
+	         reinterpret_cast<std::uintptr_t>(&result)) != 1)
+	{
+		result = {};
+		return false;
+	}
+	return true;
+}
+
 std::uintptr_t hc::translate_va(const std::uint64_t cr3, const std::uintptr_t va) noexcept
 {
 	return send(type::translate_va, cr3, va);

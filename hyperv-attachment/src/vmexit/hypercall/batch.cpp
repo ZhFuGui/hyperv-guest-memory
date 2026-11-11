@@ -4,6 +4,7 @@
 
 namespace
 {
+	struct batch_input { hc::batch_read_item items[hc::batch_max_items]; };
 	bool valid_range(std::uint64_t address, std::uint64_t size) noexcept
 	{
 		if (!size)
@@ -52,13 +53,14 @@ bool hc::batch::read(const std::uint64_t source_cr3, const std::uintptr_t items_
 	const auto slat = arch::slat_cr3();
 	if (!caller.address_of_page_directory || !slat.address_of_page_directory)
 		return false;
-	if (!mem::guest::read_virt(caller, slat, items_va, work->items, items_bytes))
+	auto* const items = (new(work->storage) batch_input)->items;
+	if (!mem::guest::read_virt(caller, slat, items_va, items, items_bytes))
 		return false;
 
 	std::uint64_t total = 0;
 	for (std::uint64_t i = 0; i < count; ++i)
 	{
-		const auto& item = work->items[i];
+		const auto& item = items[i];
 		if (item.size > batch_max_bytes - total ||
 		    !valid_range(item.source_va, item.size) || !valid_range(item.destination_va, item.size) ||
 		    overlaps(item.destination_va, item.size, items_va, items_bytes) ||
@@ -66,7 +68,7 @@ bool hc::batch::read(const std::uint64_t source_cr3, const std::uintptr_t items_
 			return false;
 		total += item.size;
 		for (std::uint64_t j = 0; j < i; ++j)
-			if (overlaps(item.destination_va, item.size, work->items[j].destination_va, work->items[j].size))
+			if (overlaps(item.destination_va, item.size, items[j].destination_va, items[j].size))
 				return false;
 	}
 
@@ -74,7 +76,7 @@ bool hc::batch::read(const std::uint64_t source_cr3, const std::uintptr_t items_
 	const cr3 source{.flags = source_cr3};
 	for (std::uint64_t i = 0; i < count; ++i)
 	{
-		const auto& item = work->items[i];
+		const auto& item = items[i];
 		if (mem::guest::copy_virt(slat, source, item.source_va, caller, item.destination_va, item.size))
 			mask |= 1ULL << i;
 	}

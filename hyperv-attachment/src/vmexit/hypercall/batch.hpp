@@ -6,8 +6,10 @@ namespace hc::batch
 {
 	struct workspace
 	{
-		cstd::atomic<bool> busy{};
-		batch_read_item items[batch_max_items]{};
+		// The gate also provides natural alignment for the shared scratch arena.
+		cstd::atomic<std::uint64_t> busy{};
+		// Shared by synchronous read/find operations, with explicit POD lifetimes.
+		alignas(8) std::uint8_t storage[sizeof(batch_read_item) * batch_max_items]{};
 	};
 
 	bool read(std::uint64_t source_cr3, std::uintptr_t items_va,

@@ -426,9 +426,16 @@ namespace logs
 extern "C" std::uint64_t send_hypercall(const hc::params* params)
 {
 	++test::sdk_calls; test::sdk_params = *params;
+	if (params->info.type == hc::type::virt_find_list) {
+		auto* result = reinterpret_cast<hc::list_find_result*>(params->args[2]);
+		std::memset(result, 0xA5, sizeof(*result)); result->status = hc::list_find_status::more;
+		return test::sdk_result;
+	}
 	*reinterpret_cast<std::uint64_t*>(params->args[3]) = test::sdk_mask;
 	return test::sdk_result;
 }
+
+#include "list_tests.hpp"
 
 int main()
 {
@@ -438,6 +445,8 @@ int main()
 		test::ordinary_and_limits(); test::validation_and_failure(); test::split_controls_and_host_copy();
 		test::dispatch_and_snapshot(); test::parallel_and_random(); test::review_guards();
 		test::page_walk_shapes(); test::sdk();
+		test::list_basics(); test::list_failures(); test::list_mutation_and_dispatch(); test::list_sdk();
+		test::list_split_and_object_bounds(); test::list_parallel();
 		// Reallocation moves ownership rather than losing or duplicating scratch.
 		auto* saved = vcpu::get(0).batch_work;
 		bi.cpu_count = 16; vcpu::init(bi);

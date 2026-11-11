@@ -21,6 +21,15 @@ Review regressions also cover CPU indices beyond the initialized count, zero
 hardware roots, roots/tables/leaves beyond the 512 GiB identity slot, physical
 copy overflow, and 4 KiB / 2 MiB / 1 GiB walks with entry snapshots.
 
+The suite also compiles the current virt_find_list (operation 12): empty list,
+first/last hit, miss, 16-byte exact key, nonzero/max window, default 1024 and
+maximum 4096-node budgets, stateless continuation, invalidated cursors, self and
+detached cycles, split source/control/result pages, malformed offsets and
+noncanonical containers, candidate mutation, output clearing, reentry,
+publication failure, SDK dispatch, and 8 CPUs alternating 400 find calls with
+400 batch calls using the same per-CPU scratch. No large visited-node set or
+runtime allocation is used. Source list mutation/object lifetime is not locked.
+
 These checks do not exercise real Hyper-V scheduling, OS page lifetime changes,
 or hardware latency. Historical build/isolated-tests/{Intel,AMD} snapshots are
 not the implementation compiled by this suite.
