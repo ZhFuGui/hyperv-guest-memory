@@ -52,6 +52,16 @@ item. Pointer items require size=8 and destination_va=0. Copy items require a
 nonzero size and a destination in the calling address space. All reserved bytes
 must be zero. Controls/outputs must stay resident and exclusively owned; they
 must not overlap or physically alias each other or the source data.
+Controls/outputs are restricted to the lower canonical user half. Each guest
+page-table level must grant user access for descriptors and user/write access
+for outputs, including large-page leaves. These permissions are checked on each
+page as it is accessed. Source reads retain kernel/readonly inspection support.
+Checked output writes also respect SLAT write protection.
+Tests include readonly/supervisor pages, ancestor permissions, 1 GiB/2 MiB
+output pages and a destination becoming readonly between copy chunks.
+allocator-check.vcxproj compiles the REAL slab/page allocators, rebasing their
+boot heap onto aligned private host RAM. It checks 16 workspaces, one page per
+CPU, coexistence with small slab buckets, reclamation, exhaustion and recovery.
 
 Example (offsets/data length supplied by the caller, one source CR3):
   items[0] = {root_va + offset_a, 0, 8, hc::dependent_direct,

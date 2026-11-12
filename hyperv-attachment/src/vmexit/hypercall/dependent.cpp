@@ -21,6 +21,10 @@ namespace
 	{
 		return na && nb && (a <= b ? b - a < na : a - b < nb);
 	}
+	bool user_range(std::uint64_t va, std::uint64_t size) noexcept
+	{
+		return va && va < (1ULL << 47) && size && size <= (1ULL << 47) - va;
+	}
 	bool relative(std::uint64_t base, std::uint64_t offset, std::uint64_t& va) noexcept
 	{
 		// Avoid signed overflow, including INT64_MIN, and reject unsigned wrapping.
@@ -42,7 +46,7 @@ bool hc::dependent::read(std::uint64_t source_cr3, std::uintptr_t items_va,
 	if (!count || count > dependent_max_items ||
 	    !(source_cr3 & 0x0000FFFFFFFFF000ULL) || (source_cr3 >> 48)) return false;
 	const auto items_bytes = count * sizeof(dependent_read_item);
-	if (!range(items_va, items_bytes) || !range(result_va, sizeof(dependent_read_result)) ||
+	if (!user_range(items_va, items_bytes) || !user_range(result_va, sizeof(dependent_read_result)) ||
 	    overlaps(items_va, items_bytes, result_va, sizeof(dependent_read_result))) return false;
 	const auto cpu = vcpu::curr_id();
 	if (cpu >= vcpu::count()) return false;
@@ -52,7 +56,8 @@ bool hc::dependent::read(std::uint64_t source_cr3, std::uintptr_t items_va,
 	const auto caller = arch::guest_cr3(), slat = arch::slat_cr3();
 	if (!caller.address_of_page_directory || !slat.address_of_page_directory) return false;
 	auto* const s = new(work->storage) state{};
-	if (!mem::guest::read_virt(caller, slat, items_va, s->items, items_bytes)) return false;
+	// Guest P|U for controls; P|W|U on every output page, including ancestors.
+	if (!mem::guest::read_virt(caller, slat, items_va, s->items, items_bytes, 5)) return false;
 
 	// Validate the complete snapshot before any payload write. Backward pointer
 	// references make the execution finite and require no sorting or recursion.
@@ -67,7 +72,7 @@ bool hc::dependent::read(std::uint64_t source_cr3, std::uintptr_t items_va,
 		if (item.kind == kind::pointer) {
 			if (item.size != 8 || item.destination_va) return false;
 		} else {
-			if (!range(item.destination_va, item.size) ||
+			if (!user_range(item.destination_va, item.size) ||
 			    overlaps(item.destination_va, item.size, items_va, items_bytes) ||
 			    overlaps(item.destination_va, item.size, result_va, sizeof(dependent_read_result))) return false;
 			for (std::uint64_t j = 0; j < i; ++j)
@@ -93,9 +98,9 @@ bool hc::dependent::read(std::uint64_t source_cr3, std::uintptr_t items_va,
 			if (!mem::guest::read_virt(source, slat, va, &pointer, sizeof(pointer))) continue;
 			if (!range(pointer, 1)) { out.status[i] = status::invalid_address; continue; }
 			out.pointers[i] = pointer;
-		} else if (!mem::guest::copy_virt(slat, source, va, caller, item.destination_va, item.size)) continue;
+		} else if (!mem::guest::copy_virt(slat, source, va, caller, item.destination_va, item.size, 7)) continue;
 		out.status[i] = status::success;
 	}
 	// Publication failure invalidates even copies that completed before it.
-	return mem::guest::write_virt(caller, slat, result_va, &out, sizeof(out));
+	return mem::guest::write_virt(caller, slat, result_va, &out, sizeof(out), 7);
 }

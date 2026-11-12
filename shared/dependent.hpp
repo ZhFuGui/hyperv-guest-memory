@@ -39,6 +39,9 @@ namespace hc
 	// skipped, independent items continue. transfer_failed covers either endpoint
 	// of a copy. Only success permits use of that item's output; a failed copy may
 	// have partially overwritten its destination. RAX!=1 invalidates ALL outputs.
+	// Controls/outputs must be in the lower canonical user half. Each guest page
+	// walk requires U for controls, and W|U for outputs, at every paging level.
+	// Output writes also require a writable SLAT mapping.
 	// Callers keep controls/outputs resident, exclusively owned and writable where
 	// applicable. Controls and nonempty outputs must not overlap; do not provide
 	// physical aliases of controls/outputs or alias them with the source data.

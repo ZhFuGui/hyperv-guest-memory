@@ -20,6 +20,10 @@ namespace
 
 		return send_hypercall(&p);
 	}
+	bool user_range(const std::uint64_t va, const std::uint64_t size) noexcept
+	{
+		return va && va < (1ULL << 47) && size && size <= (1ULL << 47) - va;
+	}
 }
 
 std::uint64_t hc::test() noexcept
@@ -81,7 +85,7 @@ bool hc::read_virtual_dependent_batch(const std::uint64_t source_cr3, const depe
 	const auto result_va = reinterpret_cast<std::uintptr_t>(&result);
 	const auto bytes = std::uint64_t(count) * sizeof(*items);
 	// Do not clear a result that aliases the descriptors before they are read.
-	if (bytes - 1 > UINTPTR_MAX - items_va ||
+	if (!user_range(items_va, bytes) || !user_range(result_va, sizeof(result)) ||
 	    (items_va <= result_va ? result_va - items_va < bytes : items_va - result_va < sizeof(result))) return false;
 	result = {};
 	if (send(type::virt_read_dependent_batch, source_cr3, items_va, count, result_va) != 1) {

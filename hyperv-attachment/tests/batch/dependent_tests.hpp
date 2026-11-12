@@ -262,6 +262,99 @@ namespace test
 		}
 	}
 
+	void dependent_output_guards()
+	{
+		dependent_fixture f; f.src[0] = 0x73;
+		constexpr std::uint64_t kernel_va = 0xFFFF800000000000ULL;
+		auto* kernel = map(caller, kernel_va); kernel[0] = 0xCC;
+		f.q[0] = dep_copy(source_va, kernel_va, 1);
+		check(!f.run(1) && kernel[0] == 0xCC, "dependent rejects kernel output before write");
+		f.q[0] = dep_copy(source_va, output_va, 1);
+		// A low canonical address can still map a read-only or supervisor page.
+		for (const auto bit : {2ULL, 4ULL}) {
+			auto* leaf = guest_leaf(caller, output_va); const auto saved = *leaf; *leaf &= ~bit;
+			f.dst[0] = 0xCC;
+			check(f.run(1) && f.out->status[0] == dep_status::transfer_failed && f.dst[0] == 0xCC,
+			      "dependent refuses read-only or supervisor destination leaf");
+			*leaf = saved;
+			auto* result_leaf = guest_leaf(caller, mask_va); const auto result_saved = *result_leaf; *result_leaf &= ~bit;
+			std::memset(f.out, 0xAA, sizeof(*f.out));
+			check(!f.run(1) && reinterpret_cast<std::uint8_t*>(f.out)[0] == 0xAA, "dependent result requires writable user page");
+			*result_leaf = result_saved;
+		}
+		// Do not bypass a second-level write-protected/COW mapping either.
+		for (const auto va : {output_va, mask_va}) {
+			const auto gpa = *guest_leaf(caller, va) & ~4095ULL;
+			auto node = slat.flags;
+			for (const auto shift : {39, 30, 21}) node = table(node)[(gpa >> shift) & 511] & ~4095ULL;
+			auto& leaf = table(node)[(gpa >> 12) & 511]; const auto saved = leaf; leaf &= ~2ULL;
+			f.dst[0] = 0xCC; std::memset(f.out, 0xAA, sizeof(*f.out));
+			const bool published = f.run(1);
+			check(va == output_va ? published && f.out->status[0] == dep_status::transfer_failed && f.dst[0] == 0xCC
+			                      : !published && reinterpret_cast<std::uint8_t*>(f.out)[0] == 0xAA,
+			      "dependent checked writes respect SLAT write protection"); leaf = saved;
+		}
+		// Each ancestor contributes to effective guest write/user permission.
+		auto node = caller.flags & ~4095ULL;
+		for (const auto shift : {39, 30, 21}) {
+			auto& entry = table(gpa_hpa.at(node))[(output_va >> shift) & 511]; const auto saved = entry;
+			for (const auto bit : {2ULL, 4ULL}) {
+				entry = saved & ~bit; f.dst[0] = 0xCC;
+				const bool published = f.run(1);
+				check(f.dst[0] == 0xCC && (!published || f.out->status[0] == dep_status::transfer_failed),
+				      "dependent effective output permissions include ancestors");
+			}
+			entry = saved; node = saved & ~4095ULL;
+		}
+		auto* control_leaf = guest_leaf(caller, request_va); const auto control_saved = *control_leaf;
+		*control_leaf &= ~2ULL;
+		check(f.run(1) && f.out->status[0] == dep_status::success, "dependent descriptors may be read-only user memory");
+		*control_leaf = control_saved & ~4ULL; f.dst[0] = 0xCC;
+		check(!f.run(1) && f.dst[0] == 0xCC, "dependent rejects supervisor descriptors"); *control_leaf = control_saved;
+		auto* source = map(f.source, kernel_va); source[0] = 0x91; *guest_leaf(f.source, kernel_va) &= ~6ULL;
+		f.q[0] = dep_copy(kernel_va, output_va, 1);
+		check(f.run(1) && f.out->status[0] == dep_status::success && f.dst[0] == 0x91,
+		      "dependent kernel read-only SOURCE remains readable");
+		kernel[0] = 0x5E; *guest_leaf(caller, kernel_va) &= ~6ULL;
+		check(hc::dependent::read(caller.flags, request_va, 1, mask_va) && f.out->status[0] == dep_status::success &&
+		      f.dst[0] == 0x5E, "dependent separates read/write permissions even when both CR3s are identical");
+		check(!hc::dependent::read(f.source.flags, kernel_va, 1, mask_va) &&
+		      !hc::dependent::read(f.source.flags, request_va, 1, kernel_va), "dependent controls must be user addresses");
+		for (const auto shift : {30, 21}) {
+			dependent_fixture large; large.src[0] = 0x36;
+			large.q[0] = dep_copy(source_va, output_va, 1);
+			auto table_gpa = caller.flags;
+			for (const auto level : {39, 30}) {
+				if (level == shift) break;
+				table_gpa = table(gpa_hpa.at(table_gpa))[(output_va >> level) & 511] & ~4095ULL;
+			}
+			auto& leaf = table(gpa_hpa.at(table_gpa))[(output_va >> shift) & 511];
+			const auto output_hpa = gpa_hpa.at(*guest_leaf(caller, output_va) & ~4095ULL);
+			slat_map(0x40000000, output_hpa); leaf = 0x40000087;
+			for (const auto bit : {2ULL, 4ULL}) {
+				leaf = 0x40000087 & ~bit; large.dst[0] = 0xCC;
+				check(large.run(1) && large.out->status[0] == dep_status::transfer_failed && large.dst[0] == 0xCC,
+				      "dependent effective permissions include large-page leaf");
+			}
+			leaf = 0x40000087;
+			check(large.run(1) && large.out->status[0] == dep_status::success && large.dst[0] == 0x36,
+			      "dependent writable user large-page output");
+		}
+		{
+			dependent_fixture changing;
+			auto* source2 = map(changing.source, source_va + 4096); auto* dest2 = map(caller, output_va + 4096);
+			std::memset(changing.src, 0x29, 4096); std::memset(source2, 0x57, 4096); std::memset(dest2, 0xCC, 4096);
+			changing.q[0] = dep_copy(source_va, output_va, 8192);
+			auto* const dest_leaf = guest_leaf(caller, output_va + 4096);
+			const auto source2_hpa = gpa_hpa.at(*guest_leaf(changing.source, source_va + 4096) & ~4095ULL);
+			std::function<void(std::uint64_t)> protect;
+			protect = [&](std::uint64_t hpa) { if (hpa == source2_hpa) *dest_leaf &= ~2ULL; else on_map = protect; };
+			on_map = protect;
+			check(changing.run(1) && changing.out->status[0] == dep_status::transfer_failed && changing.dst[0] == 0x29 &&
+			      dest2[0] == 0xCC, "dependent rechecks write permissions at each page, not just preflight");
+		}
+	}
+
 	void dependent_sdk()
 	{
 		std::array<hc::dependent_read_item, 64> items{}; hc::dependent_read_result result{};
@@ -285,5 +378,7 @@ namespace test
 		std::memset(&result, 0xA7, sizeof(result));
 		check(!hc::read_virtual_dependent_batch(1, reinterpret_cast<hc::dependent_read_item*>(&result), 1, result) &&
 		      reinterpret_cast<std::uint8_t*>(&result)[0] == 0xA7 && sdk_calls == calls, "dependent SDK rejects alias before clearing");
+		check(!hc::read_virtual_dependent_batch(1, reinterpret_cast<const hc::dependent_read_item*>(0xFFFF800000000000ULL),
+		      1, result) && sdk_calls == calls, "dependent SDK refuses kernel controls without dereferencing");
 	}
 }

@@ -17,7 +17,10 @@ namespace mem
 	}
 
 	template <typename MapFn>
-	phys_addr translate_va(const cr3 cr3, const std::uintptr_t va_raw, MapFn map_pa) noexcept
+	// required_flags applies at EVERY level, including 1 GiB/2 MiB leaves.
+	// Default retains the existing present-only physical inspection semantics.
+	phys_addr translate_va(const cr3 cr3, const std::uintptr_t va_raw, MapFn map_pa,
+	                       const std::uint64_t required_flags = 1) noexcept
 	{
 		const virt_addr va{ .val = va_raw };
 
@@ -26,7 +29,7 @@ namespace mem
 		if (!pml4)
 			return 0;
 		const auto pml4e = read_entry(pml4, va.pml4e);
-		if (!pml4e.present)
+		if ((pml4e.flags & required_flags) != required_flags)
 			return 0;
 
 		const auto* pdpt = static_cast<const pdpte_64*>(
@@ -34,7 +37,7 @@ namespace mem
 		if (!pdpt)
 			return 0;
 		const auto pdpte = read_entry(pdpt, va.pdpte);
-		if (!pdpte.present)
+		if ((pdpte.flags & required_flags) != required_flags)
 			return 0;
 
 		if (pdpte.large_page)
@@ -49,7 +52,7 @@ namespace mem
 		if (!pd)
 			return 0;
 		const auto pde = read_entry(pd, va.pde);
-		if (!pde.present)
+		if ((pde.flags & required_flags) != required_flags)
 			return 0;
 
 		if (pde.large_page)
@@ -63,7 +66,7 @@ namespace mem
 		if (!ptbl)
 			return 0;
 		const auto pte = read_entry(ptbl, va.pte);
-		if (!pte.present)
+		if ((pte.flags & required_flags) != required_flags)
 			return 0;
 
 		return (pte.page_frame_number << page_shift) | va.off;
@@ -78,10 +81,11 @@ namespace mem
 
 	bool copy_phys(std::uintptr_t src, std::uintptr_t dest, std::uint64_t size) noexcept;
 
-	template <typename ResolveFn>
+	template <typename SourceResolveFn, typename DestinationResolveFn>
 	bool copy_virt(const cr3 src_cr3, const std::uintptr_t src,
 	               const cr3 dest_cr3, const std::uintptr_t dest,
-	               const std::uint64_t size, ResolveFn resolve) noexcept
+	               const std::uint64_t size, SourceResolveFn&& resolve_source,
+	               DestinationResolveFn&& resolve_destination) noexcept
 	{
 		auto remaining = size;
 		auto curr_src = src;
@@ -89,11 +93,11 @@ namespace mem
 
 		while (remaining > 0)
 		{
-			const auto* src_ptr = static_cast<const std::uint8_t*>(resolve(src_cr3, curr_src));
+			const auto* src_ptr = static_cast<const std::uint8_t*>(resolve_source(src_cr3, curr_src));
 			if (!src_ptr)
 				return false;
 
-			auto* dest_ptr = static_cast<std::uint8_t*>(resolve(dest_cr3, curr_dest));
+			auto* dest_ptr = static_cast<std::uint8_t*>(resolve_destination(dest_cr3, curr_dest));
 			if (!dest_ptr)
 				return false;
 
@@ -109,6 +113,14 @@ namespace mem
 		}
 
 		return true;
+	}
+
+	template <typename ResolveFn>
+	bool copy_virt(const cr3 src_cr3, const std::uintptr_t src,
+	               const cr3 dest_cr3, const std::uintptr_t dest,
+	               const std::uint64_t size, ResolveFn resolve) noexcept
+	{
+		return copy_virt(src_cr3, src, dest_cr3, dest, size, resolve, resolve);
 	}
 
 	inline bool copy_virt(const cr3 src_cr3, const std::uintptr_t src,

@@ -455,6 +455,7 @@ int main()
 		test::list_split_and_object_bounds(); test::list_parallel();
 		test::dependent_basics(); test::dependent_validation(); test::dependent_failures();
 		test::dependent_snapshot_and_dispatch(); test::dependent_split(); test::dependent_random(); test::dependent_sdk();
+		test::dependent_output_guards();
 		// Reallocation moves ownership rather than losing or duplicating scratch.
 		auto* saved = vcpu::get(0).batch_work;
 		bi.cpu_count = 16; vcpu::init(bi);

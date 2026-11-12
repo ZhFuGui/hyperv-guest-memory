@@ -5,6 +5,11 @@ param([ValidateSet('Intel','AMD')][string[]]$Architecture = @('Intel','AMD'),
 $ErrorActionPreference = 'Stop'
 $projectRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..\..')).Path
 foreach ($cpuArchitecture in $Architecture) {
+    & MSBuild.exe (Join-Path $PSScriptRoot 'allocator-check.vcxproj') /m:3 /t:Build /p:Configuration=Release /p:Platform=x64 "/p:HypervisorArchitecture=$cpuArchitecture" /nr:false /verbosity:minimal
+    if ($LASTEXITCODE -ne 0) { throw "$cpuArchitecture allocator build failed" }
+    $outputRoot = Join-Path $projectRoot "build\isolated-tests\batch\$cpuArchitecture"
+    & (Join-Path $outputRoot 'allocator-check.exe') | Tee-Object -FilePath (Join-Path $outputRoot 'allocator-results.txt')
+    if ($LASTEXITCODE -ne 0) { throw "$cpuArchitecture real allocator failed" }
     & MSBuild.exe (Join-Path $PSScriptRoot 'map-bounds.vcxproj') /m:3 /t:Build /p:Configuration=Release /p:Platform=x64 "/p:HypervisorArchitecture=$cpuArchitecture" /nr:false /verbosity:minimal
     if ($LASTEXITCODE -ne 0) { throw "$cpuArchitecture real mapper build failed" }
     $outputRoot = Join-Path $projectRoot "build\isolated-tests\batch\$cpuArchitecture"

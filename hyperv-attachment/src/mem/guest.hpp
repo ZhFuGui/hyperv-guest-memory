@@ -7,9 +7,11 @@
 namespace mem::guest
 {
 	template <class T = void*>
-	[[nodiscard]] T map_gpa(const cr3 slat_cr3, const std::uintptr_t gpa) noexcept
+	[[nodiscard]] T map_gpa(const cr3 slat_cr3, const std::uintptr_t gpa,
+	                        const std::uint64_t required_flags = 1) noexcept
 	{
-		const auto hpa = mem::translate_va(slat_cr3, gpa);
+		const auto hpa = mem::translate_va(slat_cr3, gpa,
+			[](std::uintptr_t pa) -> void* { return mem::map_phys(pa); }, required_flags);
 		return hpa ? mem::map_phys<T>(hpa) : T{};
 	}
 
@@ -20,11 +22,11 @@ namespace mem::guest
 	}
 
 	inline phys_addr translate_va(const cr3 guest_cr3, const cr3 slat_cr3,
-	                               const std::uintptr_t va) noexcept
+	                               const std::uintptr_t va, const std::uint64_t required_flags = 1) noexcept
 	{
 		return mem::translate_va(guest_cr3, va, [slat_cr3](std::uintptr_t gpa) -> void* {
 			return map_gpa(slat_cr3, gpa);
-		});
+		}, required_flags);
 	}
 
 	inline phys_addr translate_va(const cr3 guest_cr3, const std::uintptr_t va) noexcept
@@ -35,12 +37,16 @@ namespace mem::guest
 	inline bool copy_virt(const cr3 slat_cr3,
 	                       const cr3 src_cr3, const std::uintptr_t src,
 	                       const cr3 dest_cr3, const std::uintptr_t dest,
-	                       const std::uint64_t size) noexcept
+	                       const std::uint64_t size, const std::uint64_t destination_flags = 1) noexcept
 	{
 		return mem::copy_virt(src_cr3, src, dest_cr3, dest, size,
 			[slat_cr3](const cr3 c, const std::uintptr_t va) -> void* {
 				const auto gpa = translate_va(c, slat_cr3, va);
 				return gpa ? map_gpa(slat_cr3, gpa) : nullptr;
+			},
+			[slat_cr3, destination_flags](const cr3 c, const std::uintptr_t va) -> void* {
+				const auto gpa = translate_va(c, slat_cr3, va, destination_flags);
+				return gpa ? map_gpa(slat_cr3, gpa, destination_flags & 3) : nullptr;
 			});
 	}
 
@@ -61,7 +67,7 @@ namespace mem::guest
 
 	template <direction Dir>
 	inline bool copy_host(const cr3 guest_cr3, const cr3 slat_cr3, const std::uintptr_t guest_va,
-	                      void* const host_buf, const std::size_t size) noexcept
+	                      void* const host_buf, const std::size_t size, const std::uint64_t required_flags = 1) noexcept
 	{
 		auto remaining = size;
 		auto va = guest_va;
@@ -69,11 +75,13 @@ namespace mem::guest
 
 		while (remaining > 0)
 		{
-			const auto gpa = translate_va(guest_cr3, slat_cr3, va);
+			const auto gpa = translate_va(guest_cr3, slat_cr3, va, required_flags);
 			if (!gpa)
 				return false;
 
-			auto* const mapped = map_gpa<std::uint8_t*>(slat_cr3, gpa);
+			// Checked writes also respect SLAT write protection (e.g. host COW).
+			auto* const mapped = map_gpa<std::uint8_t*>(slat_cr3, gpa,
+				Dir == direction::to_guest ? (required_flags & 3) : 1);
 			if (!mapped)
 				return false;
 			const auto page_left = page_size - (va & page_mask);
@@ -100,16 +108,16 @@ namespace mem::guest
 	}
 
 	inline bool read_virt(const cr3 guest_cr3, const cr3 slat_cr3, const std::uintptr_t guest_va,
-	                     void* const host_dest, const std::size_t size) noexcept
+	                     void* const host_dest, const std::size_t size, const std::uint64_t required_flags = 1) noexcept
 	{
-		return copy_host<direction::from_guest>(guest_cr3, slat_cr3, guest_va, host_dest, size);
+		return copy_host<direction::from_guest>(guest_cr3, slat_cr3, guest_va, host_dest, size, required_flags);
 	}
 
 	inline bool write_virt(const cr3 guest_cr3, const cr3 slat_cr3, const std::uintptr_t guest_va,
-	                      const void* const host_src, const std::size_t size) noexcept
+	                      const void* const host_src, const std::size_t size, const std::uint64_t required_flags = 1) noexcept
 	{
 		return copy_host<direction::to_guest>(guest_cr3, slat_cr3, guest_va,
-		                                      const_cast<void*>(host_src), size);
+		                                      const_cast<void*>(host_src), size, required_flags);
 	}
 
 	inline bool read_virt(const cr3 guest_cr3, const std::uintptr_t guest_va,
