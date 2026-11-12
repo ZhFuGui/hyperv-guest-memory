@@ -1,5 +1,6 @@
 #pragma once
 #include "../../src/vmexit/hypercall/list_find.hpp"
+#include "../../src/vmexit/hypercall/dependent.hpp"
 
 namespace test
 {
@@ -241,7 +242,8 @@ namespace test
 	void list_parallel()
 	{
 		list_fixture f(64); f.key(1063);
-		struct control { std::uint64_t request, result, items, mask, data; hc::list_find_result* out; std::uint64_t* bits; };
+		struct control { std::uint64_t request, result, items, mask, data, dependent_items, dependent_result;
+		                 hc::list_find_result* out; std::uint64_t* bits; hc::dependent_read_result* dependent; };
 		std::array<control, 8> controls{};
 		for (unsigned i = 0; i < controls.size(); ++i) {
 			auto& c = controls[i]; c.request = request_va + 0x100000 + i * 0x10000;
@@ -251,6 +253,11 @@ namespace test
 			auto* item = reinterpret_cast<hc::batch_read_item*>(map(caller, c.items));
 			*item = {f.objects[0] + 16, c.data, 8};
 			c.bits = reinterpret_cast<std::uint64_t*>(map(caller, c.mask)); map(caller, c.data);
+			c.dependent_items = c.request + 20480; c.dependent_result = c.request + 24576;
+			auto* dependent = reinterpret_cast<hc::dependent_read_item*>(map(caller, c.dependent_items));
+			dependent[0] = {f.head_va, 0, 8, hc::dependent_direct, hc::dependent_read_kind::pointer, 0};
+			dependent[1] = {static_cast<std::uint64_t>(-16LL), c.data + 8, 8, 0, hc::dependent_read_kind::copy, 0};
+			c.dependent = reinterpret_cast<hc::dependent_read_result*>(map(caller, c.dependent_result));
 		}
 		const auto root = caller; std::atomic<unsigned> failures = 0;
 		std::vector<std::thread> threads;
@@ -260,9 +267,13 @@ namespace test
 				if (!hc::list_find::find(f.source.flags, c.request, c.result) || c.out->status != hc::list_find_status::found ||
 				    c.out->object_va != f.objects.back() || c.out->visited != 64) ++failures;
 				if (!hc::batch::read(f.source.flags, c.items, 1, c.mask) || *c.bits != 1) ++failures;
+				std::uint64_t id = 0;
+				if (!hc::dependent::read(f.source.flags, c.dependent_items, 2, c.dependent_result) ||
+				    c.dependent->status[1] != hc::dependent_read_status::success || c.dependent->pointers[0] != f.link(0) ||
+				    !mem::guest::read_virt(caller, c.data + 8, &id, 8) || id != 1000) ++failures;
 			}
 		});
 		for (auto& t : threads) t.join();
-		check(failures == 0, "8 CPUs alternate find and batch with shared scratch");
+		check(failures == 0, "8 CPUs alternate operations 11/12/13 with shared scratch");
 	}
 }

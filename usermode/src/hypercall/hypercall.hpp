@@ -4,6 +4,7 @@
 #include <hypercall.hpp>
 #include <batch.hpp>
 #include <list_find.hpp>
+#include <dependent.hpp>
 #include <log.hpp>
 
 namespace hc
@@ -25,6 +26,10 @@ namespace hc
 	// true validates transport only; inspect result.status (including more).
 	bool find_virtual_list(std::uint64_t source_cr3, const list_find_request& request,
 	                       list_find_result& result) noexcept;
+	// true validates publication only; inspect each item's status. false invalidates
+	// all outputs. Rejected overlapping controls are left untouched.
+	bool read_virtual_dependent_batch(std::uint64_t source_cr3, const dependent_read_item* items,
+	                                 std::uint32_t count, dependent_read_result& result) noexcept;
 
 	std::uintptr_t translate_va(std::uint64_t cr3, std::uintptr_t va) noexcept;
 

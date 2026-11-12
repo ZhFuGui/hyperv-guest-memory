@@ -431,11 +431,17 @@ extern "C" std::uint64_t send_hypercall(const hc::params* params)
 		std::memset(result, 0xA5, sizeof(*result)); result->status = hc::list_find_status::more;
 		return test::sdk_result;
 	}
+	if (params->info.type == hc::type::virt_read_dependent_batch) {
+		auto* result = reinterpret_cast<hc::dependent_read_result*>(params->args[3]);
+		std::memset(result, 0xA5, sizeof(*result)); result->status[0] = hc::dependent_read_status::success;
+		return test::sdk_result;
+	}
 	*reinterpret_cast<std::uint64_t*>(params->args[3]) = test::sdk_mask;
 	return test::sdk_result;
 }
 
 #include "list_tests.hpp"
+#include "dependent_tests.hpp"
 
 int main()
 {
@@ -447,6 +453,8 @@ int main()
 		test::page_walk_shapes(); test::sdk();
 		test::list_basics(); test::list_failures(); test::list_mutation_and_dispatch(); test::list_sdk();
 		test::list_split_and_object_bounds(); test::list_parallel();
+		test::dependent_basics(); test::dependent_validation(); test::dependent_failures();
+		test::dependent_snapshot_and_dispatch(); test::dependent_split(); test::dependent_random(); test::dependent_sdk();
 		// Reallocation moves ownership rather than losing or duplicating scratch.
 		auto* saved = vcpu::get(0).batch_work;
 		bi.cpu_count = 16; vcpu::init(bi);

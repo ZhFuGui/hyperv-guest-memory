@@ -22,15 +22,16 @@ def verify(path):
     # UNWIND_INFO v1, one prolog byte (PUSH RBX), one UWOP_PUSH_NONVOL RBX.
     assert unwind[:6] == bytes([1, 1, 1, 0, 1, 0x30]), unwind.hex()
     image = pe.get_memory_mapped_image()
-    scenarios = [0, 1, 0x1337, 0x8000000000000000, 0xFEDCBA9876543210]
-    for response in scenarios:
+    scenarios = [(11, value) for value in [0, 1, 0x1337, 0x8000000000000000, 0xFEDCBA9876543210]]
+    scenarios += [(13, 0), (13, 1)]
+    for operation, response in scenarios:
         uc = Uc(UC_ARCH_X86, UC_MODE_64)
         uc.mem_map(base, (len(image) + 4095) & ~4095)
         uc.mem_write(base, image)
         scratch = 0x20000000
         uc.mem_map(scratch, 0x20000)
         params, stack, stop = scratch, scratch + 0x10008, scratch + 0x1F000
-        args = [0x8A3B55C7927000B, 0x12345000, 0x112233445566, 64, 0x77889900, 0]
+        args = [(0x8A3B55C7927 << 16) | operation, 0x12345000, 0x112233445566, 64, 0x77889900, 0]
         uc.mem_write(params, struct.pack("<6Q", *args))
         uc.mem_write(stack, struct.pack("<Q", stop))
         uc.reg_write(UC_X86_REG_RSP, stack)

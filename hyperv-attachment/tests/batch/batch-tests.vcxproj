@@ -25,6 +25,7 @@
     <ClCompile Include="main.cpp" />
     <ClCompile Include="$(RepositoryRoot)hyperv-attachment\src\vmexit\hypercall\batch.cpp" />
     <ClCompile Include="$(RepositoryRoot)hyperv-attachment\src\vmexit\hypercall\list_find.cpp" />
+    <ClCompile Include="$(RepositoryRoot)hyperv-attachment\src\vmexit\hypercall\dependent.cpp" />
     <ClCompile Include="$(RepositoryRoot)hyperv-attachment\src\vmexit\hypercall\hypercall.cpp"><ObjectFileName>$(IntDir)dispatch.obj</ObjectFileName></ClCompile>
     <ClCompile Include="$(RepositoryRoot)hyperv-attachment\src\vcpu\vcpu.cpp" />
     <ClCompile Include="$(RepositoryRoot)hyperv-attachment\src\mem\mem.cpp" />

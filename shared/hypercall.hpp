@@ -23,7 +23,10 @@ namespace hc
 		virt_read_batch = 11,
 		// RDX=source CR3, R8=request VA, R9=result VA, R10=R11=0.
 		// RAX=1 iff the full result was published; inspect result.status.
-		virt_find_list = 12
+		virt_find_list = 12,
+		// RDX=source CR3, R8=items VA, R9=count, R10=result VA, R11=0.
+		// RAX=1 iff the full result was published; inspect each item status.
+		virt_read_dependent_batch = 13
 	};
 
 	union info

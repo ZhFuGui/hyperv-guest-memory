@@ -1,6 +1,7 @@
 #include "hypercall.hpp"
 #include "batch.hpp"
 #include "list_find.hpp"
+#include "dependent.hpp"
 #include "../../arch/current.hpp"
 #include "../../logs/logs.hpp"
 #include "../../mem/alloc/page.hpp"
@@ -58,6 +59,9 @@ bool hc::handle(guest_regs& regs)
 		return true;
 	case type::virt_find_list:
 		regs.rax = regs.r10 == 0 && regs.r11 == 0 && list_find::find(regs.rdx, regs.r8, regs.r9);
+		return true;
+	case type::virt_read_dependent_batch:
+		regs.rax = regs.r11 == 0 && dependent::read(regs.rdx, regs.r8, regs.r9, regs.r10);
 		return true;
 
 	case type::translate_va:

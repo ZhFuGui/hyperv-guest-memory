@@ -73,6 +73,24 @@ bool hc::find_virtual_list(const std::uint64_t source_cr3, const list_find_reque
 	return true;
 }
 
+bool hc::read_virtual_dependent_batch(const std::uint64_t source_cr3, const dependent_read_item* const items,
+                                      const std::uint32_t count, dependent_read_result& result) noexcept
+{
+	if (!items || !count || count > dependent_max_items) return false;
+	const auto items_va = reinterpret_cast<std::uintptr_t>(items);
+	const auto result_va = reinterpret_cast<std::uintptr_t>(&result);
+	const auto bytes = std::uint64_t(count) * sizeof(*items);
+	// Do not clear a result that aliases the descriptors before they are read.
+	if (bytes - 1 > UINTPTR_MAX - items_va ||
+	    (items_va <= result_va ? result_va - items_va < bytes : items_va - result_va < sizeof(result))) return false;
+	result = {};
+	if (send(type::virt_read_dependent_batch, source_cr3, items_va, count, result_va) != 1) {
+		result = {};
+		return false;
+	}
+	return true;
+}
+
 std::uintptr_t hc::translate_va(const std::uint64_t cr3, const std::uintptr_t va) noexcept
 {
 	return send(type::translate_va, cr3, va);

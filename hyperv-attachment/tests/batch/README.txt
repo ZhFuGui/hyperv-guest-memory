@@ -33,3 +33,37 @@ runtime allocation is used. Source list mutation/object lifetime is not locked.
 These checks do not exercise real Hyper-V scheduling, OS page lifetime changes,
 or hardware latency. Historical build/isolated-tests/{Intel,AMD} snapshots are
 not the implementation compiled by this suite.
+
+Operation 13 (virt_read_dependent_batch) uses the production dependent handler:
+64-node chains, shared pointer parents, independent roots, signed offsets,
+pointer-inclusive 64 KiB budget, null/noncanonical pointers, overflow/underflow,
+failure propagation, malformed/forward/non-pointer parents, control/output
+overlap, split descriptors/pointers/payload/results, private pointer/descriptor
+snapshots, publication failure, bounds/roots/reentry guards, SDK marshalling,
+and 256 randomized 64-item dependency graphs checked against a host data model.
+The 8-CPU mixed test alternates 400 calls to EACH of operations 11, 12 and 13,
+sharing the same per-CPU workspace. The assembly model also checks operation 13.
+
+The shared ABI is in shared/dependent.hpp (24-byte item, 576-byte result).
+SDK entry: hc::read_virtual_dependent_batch(source_cr3, items, count, result).
+Set parent=hc::dependent_direct for an absolute source VA. Otherwise address
+is a signed byte offset encoded as uint64_t, and parent names an earlier POINTER
+item. Pointer items require size=8 and destination_va=0. Copy items require a
+nonzero size and a destination in the calling address space. All reserved bytes
+must be zero. Controls/outputs must stay resident and exclusively owned; they
+must not overlap or physically alias each other or the source data.
+
+Example (offsets/data length supplied by the caller, one source CR3):
+  items[0] = {root_va + offset_a, 0, 8, hc::dependent_direct,
+              hc::dependent_read_kind::pointer, 0};
+  items[1] = {offset_b, 0, 8, 0, hc::dependent_read_kind::pointer, 0};
+  items[2] = {offset_c, destination_va, data_length, 1,
+              hc::dependent_read_kind::copy, 0};
+Check bool publication AND result.status[i]==success before using each output.
+Successful pointer observations are in result.pointers[i]; other pointer slots
+and unused statuses are zero. transfer_failed covers either endpoint and may
+leave partial destination data. A false return invalidates ALL outputs, even if
+some transfers finished. The SDK clears an incomplete published result; locally
+rejected inputs may leave it unchanged (especially overlapping controls).
+Source identity/lifetime checks remain the caller's responsibility. No atomic
+snapshot, retry loop, cross-call state or automatic target pinning is provided.

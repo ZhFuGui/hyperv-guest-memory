@@ -71,6 +71,7 @@
     <ClCompile Include="src\vmexit\hypercall\hypercall.cpp" />
     <ClCompile Include="src\vmexit\hypercall\batch.cpp" />
     <ClCompile Include="src\vmexit\hypercall\list_find.cpp" />
+    <ClCompile Include="src\vmexit\hypercall\dependent.cpp" />
     <ClCompile Include="src\vmexit\first\first.cpp" />
     <ClCompile Include="src\vmexit\vmexit.cpp" />
     <ClCompile Include="src\slat\cr3\cr3.cpp" />
@@ -105,6 +106,7 @@
     <ClInclude Include="src\vmexit\hypercall\hypercall.hpp" />
     <ClInclude Include="src\vmexit\hypercall\batch.hpp" />
     <ClInclude Include="src\vmexit\hypercall\list_find.hpp" />
+    <ClInclude Include="src\vmexit\hypercall\dependent.hpp" />
     <ClInclude Include="src\vmexit\first\first.hpp" />
     <ClInclude Include="src\vmexit\vmexit.hpp" />
     <ClInclude Include="src\slat\slat.hpp" />
